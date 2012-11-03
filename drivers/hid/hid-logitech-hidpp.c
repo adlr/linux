@@ -310,7 +310,9 @@ int hidpp_raw_event(struct hid_device *hdev, struct hid_report *hid_report,
 	hidpp_print_raw_event("hidpp_raw_event", data, size);
 
 	if ((report->report_id != REPORT_ID_HIDPP_LONG) &&
-	    (report->report_id != REPORT_ID_HIDPP_SHORT)) {
+	    (report->report_id != REPORT_ID_HIDPP_SHORT) &&
+	    (report->report_id != REPORT_ID_HIDPP_REL) &&
+	    (report->report_id != 2)) {
 		dbg_hid("hid-logitech-hidpp.c:%s: ignore report_id:%d\n",
 			__func__, report->report_id);
 		return 0;
@@ -320,6 +322,7 @@ int hidpp_raw_event(struct hid_device *hdev, struct hid_report *hid_report,
 	 * previoulsly sent command
 	 */
 	if (unlikely(mutex_is_locked(&hidpp_dev->send_mutex))) {
+		dbg_hid("%s mutex is locked, waiting for reply\n", __func__);
 		/* Check for a correct hidpp20 answer */
 		bool correct_answer =
 			report->fap.feature_index == question->fap.feature_index &&

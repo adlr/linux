@@ -290,6 +290,7 @@ static int wtp_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 
 	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
 	input_set_abs_params(input, ABS_MT_TOUCH_MINOR, 0, 255, 0, 0);
+	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_X, 0, X_SIZE, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, Y_SIZE, 0, 0);
 	input_set_abs_params(input, ABS_X, 0, X_SIZE, 0, 0);
@@ -407,6 +408,7 @@ static void wtp_remove(struct hid_device *hdev)
 
 static const struct hid_device_id wtp_devices[] = {
 	{HID_DEVICE(BUS_DJ, USB_VENDOR_ID_LOGITECH, UNIFYING_DEVICE_ID_WIRELESS_TOUCHPAD) },
+	{HID_DEVICE(BUS_DJ, USB_VENDOR_ID_LOGITECH, UNIFYING_DEVICE_ID_WIRELESS_TOUCHPAD_T650) },
 	{ }
 };
 MODULE_DEVICE_TABLE(hid, wtp_devices);

@@ -1075,12 +1075,15 @@ static void logi_dj_remove(struct hid_device *hdev)
 static const u16 dj_have_special_driver[] = {
 	UNIFYING_DEVICE_ID_WIRELESS_TOUCHPAD,
 	UNIFYING_DEVICE_ID_WIRELESS_TOUCHPAD_T650,
+	UNIFYING_DEVICE_ID_ZONE_MOUSE_T400,
+	UNIFYING_DEVICE_ID_TOUCH_MOUSE_T620,
 };
 
 static int logi_djdevice_probe(struct hid_device *hdev,
 			 const struct hid_device_id *id)
 {
 	int ret, i;
+	dbg_hid("logi_djdevice_probe called\n");
 
 	for (i = 0; i < ARRAY_SIZE(dj_have_special_driver) ; i++) {
 		if (dj_have_special_driver[i] == hdev->product)

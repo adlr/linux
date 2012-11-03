@@ -1,7 +1,7 @@
 /*
  *  USB HID quirks support for Linux
  *
- *  Copyright (c) 1999 Andreas Gal
+ *  CopyriGht (c) 1999 Andreas Gal
  *  Copyright (c) 2000-2005 Vojtech Pavlik <vojtech@suse.cz>
  *  Copyright (c) 2005 Michael Haboustak <mike-@cinci.rr.com> for Concept2, Inc
  *  Copyright (c) 2006-2007 Jiri Kosina
@@ -797,5 +797,7 @@
 
 #define UNIFYING_DEVICE_ID_WIRELESS_TOUCHPAD	0x4011
 #define UNIFYING_DEVICE_ID_WIRELESS_TOUCHPAD_T650	0x4101
+#define UNIFYING_DEVICE_ID_ZONE_MOUSE_T400	0x4026
+#define UNIFYING_DEVICE_ID_TOUCH_MOUSE_T620	0x4027
 
 #endif
