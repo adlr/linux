@@ -95,6 +95,7 @@ static int hidpp_send_message_sync(struct hidpp_device *hidpp_dev,
 	ret = __hidpp_send_report(hidpp_dev->hid_dev, message);
 
 	if (ret) {
+          dbg_hid("__hidpp_send_report returned err: %d\n", ret);
 		memset(response, 0, sizeof(struct hidpp_report));
 		goto exit;
 	}
@@ -108,6 +109,7 @@ static int hidpp_send_message_sync(struct hidpp_device *hidpp_dev,
 	if (response->report_id == REPORT_ID_HIDPP_SHORT &&
 	    response->fap.feature_index == HIDPP_ERROR) {
 		ret = response->fap.params[0];
+          dbg_hid("__hidpp_send_report got hidpp error %d\n", ret);
 		goto exit;
 	}
 
