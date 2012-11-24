@@ -101,6 +101,7 @@ extern int hidpp_raw_event(struct hid_device *hdev, struct hid_report *report,
 
 extern void hidpp_connect_change(struct hidpp_device *hidpp_dev, bool connected);
 extern int hidpp_init(struct hidpp_device *hidpp_dev, struct hid_device *hid_dev);
+extern void hidpp_delayed_init(struct hidpp_device *hidpp_device);
 extern void hidpp_remove(struct hidpp_device *hidpp_dev);
 
 extern int hidpp_send_command_sync(struct hidpp_device *hidpp_dev,

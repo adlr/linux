@@ -466,7 +466,7 @@ static int tm_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	struct hidpp_device *hidpp_device;
 	int ret;
 
-	dbg_hid("%s\n", __func__);
+	dbg_hid("%s START\n", __func__);
 
 	if (!use_raw_mode) {
 		dbg_hid("Using Standard mode for mouse\n");
@@ -516,15 +516,24 @@ static int tm_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	/* Normally, a driver would call 
 	 */
 
-	dbg_hid("%s calling hid_hw_start\n", __func__);
-	// ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
-	// if (ret)
-	// 	goto failed;
-
 	dbg_hid("%s calling hidpp_init\n", __func__);
 	ret = hidpp_init(hidpp_device, hdev);
 	if (ret)
 		goto failed;
+	//hidpp_delayed_init(hidpp_device);
+
+	dbg_hid("%s going to raw\n", __func__);
+	ret = tm_set_raw_report_state(hidpp_device);
+	if (!ret) {
+		dbg_hid("ERROR: tm_set_raw_report_state failed!!");
+	}
+	fd->in_raw_mode = 1;
+
+	dbg_hid("%s calling hid_hw_start\n", __func__);
+	ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
+	if (ret)
+		goto failed;
+	fd->hid_hw_started = 1;
 
 	dbg_hid("%s END\n", __func__);
 	return 0;

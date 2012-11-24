@@ -177,7 +177,7 @@ static void schedule_delayed_hidpp_init(struct hidpp_device *hidpp_dev)
 	}
 }
 
-static void hidpp_delayed_init(struct hidpp_device *hidpp_device)
+void hidpp_delayed_init(struct hidpp_device *hidpp_device)
 {
 	struct hid_device *hdev = hidpp_device->hid_dev;
 	int ret = 0;
@@ -207,6 +207,7 @@ static void hidpp_delayed_init(struct hidpp_device *hidpp_device)
 	if (!ret)
 		hidpp_device->initialized = true;
 }
+EXPORT_SYMBOL_GPL(hidpp_delayed_init);
 
 static void delayed_work_cb(struct work_struct *work)
 {
@@ -255,6 +256,7 @@ int hidpp_init(struct hidpp_device *hidpp_dev, struct hid_device *hid_dev)
 
 	hidpp_dev->init_retry = 0;
 	hidpp_dev->hid_dev = hid_dev;
+	hidpp_dev->initialized = 1;
 
 	INIT_WORK(&hidpp_dev->work, delayed_work_cb);
 	mutex_init(&hidpp_dev->send_mutex);
@@ -270,7 +272,7 @@ int hidpp_init(struct hidpp_device *hidpp_dev, struct hid_device *hid_dev)
 		return -ENOMEM;
 	}
 
-	schedule_delayed_hidpp_init(hidpp_dev);
+	//schedule_delayed_hidpp_init(hidpp_dev);
 
 	return 0;
 }

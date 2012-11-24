@@ -115,6 +115,7 @@ struct dj_device {
 	struct dj_receiver_dev *dj_receiver_dev;
 	u32 reports_supported;
 	u8 device_index;
+	unsigned hid_device_started:1;
 };
 
 /* Keyboard descriptor (1) */
@@ -395,11 +396,13 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 
 	djrcv_dev->paired_dj_devices[dj_report->device_index] = dj_dev;
 
-	if (hid_add_device(dj_hiddev)) {
-		dev_err(&djrcv_hdev->dev, "%s: failed adding dj_device\n",
-			__func__);
-		goto hid_add_device_fail;
-	}
+	// dbg_hid("hid_add_device START\n");
+	// if (hid_add_device(dj_hiddev)) {
+	// 	dev_err(&djrcv_hdev->dev, "%s: failed adding dj_device\n",
+	// 		__func__);
+	// 	goto hid_add_device_fail;
+	// }
+	// dbg_hid("hid_add_device STOP\n");
 
 	return;
 
@@ -414,6 +417,7 @@ static void delayedwork_callback(struct work_struct *work)
 {
 	struct dj_receiver_dev *djrcv_dev =
 		container_of(work, struct dj_receiver_dev, work);
+	struct hid_device *djrcv_hdev = djrcv_dev->hdev;
 
 	struct hidpp_device *hidpp_dev;
 	struct dj_device *djdev;
@@ -463,6 +467,16 @@ static void delayedwork_callback(struct work_struct *work)
 			dev_err(&djrcv_dev->hdev->dev, "%s:"
 				"dj_dev null, unexpected device index\n", __func__);
 			return;
+		}
+		if (!djdev->hid_device_started && connected) {
+			dbg_hid("hid_add_device START\n");
+			if (hid_add_device(djdev->hdev)) {
+				dev_err(&djrcv_hdev->dev, "%s: failed adding dj_device\n",
+					__func__);
+			} else {
+				djdev->hid_device_started = 1;
+			}
+			dbg_hid("hid_add_device STOP\n");
 		}
 		hidpp_dev = hid_get_drvdata(djdev->hdev);
 		if (!hidpp_dev)	{
@@ -771,16 +785,21 @@ static int logi_dj_ll_parse(struct hid_device *hid)
 			__func__, djdev->reports_supported);
 	}
 
+	dbg_hid("%s calling hid_register_report1\n", __func__);
+
 	report = hid_register_report(hid, HID_INPUT_REPORT,
 		REPORT_ID_HIDPP_SHORT);
 	report->size = HIDPP_REPORT_SHORT_LENGTH;
+	dbg_hid("%s calling hid_register_report2\n", __func__);
 	report = hid_register_report(hid, HID_INPUT_REPORT,
 		REPORT_ID_HIDPP_LONG);
 	report->size = HIDPP_REPORT_LONG_LENGTH;
 
+	dbg_hid("%s calling hid_parse_report\n", __func__);
 	retval = hid_parse_report(hid, rdesc, rsize);
 	kfree(rdesc);
 
+	dbg_hid("%s returning %d\n", __func__, retval);
 	return retval;
 }
 
