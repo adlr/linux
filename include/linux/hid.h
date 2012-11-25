@@ -481,7 +481,8 @@ struct hid_device {							/* device report descriptor */
 	unsigned country;						/* HID country */
 	struct hid_report_enum report_enum[HID_REPORT_TYPES];
 
-	struct semaphore driver_lock;					/* protects the current driver */
+	struct semaphore driver_lock;					/* protects the current driver, except during input */
+	struct semaphore driver_input_lock;				/* protects the current driver */
 	struct device dev;						/* device */
 	struct hid_driver *driver;
 	struct hid_ll_driver *ll_driver;
