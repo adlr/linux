@@ -522,12 +522,20 @@ static int tm_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		goto failed;
 	//hidpp_delayed_init(hidpp_device);
 
+	dbg_hid("%s upping driver event lock\n", __func__);
+	up(&hdev->driver_event_lock);
+
 	dbg_hid("%s going to raw\n", __func__);
 	ret = tm_set_raw_report_state(hidpp_device);
 	if (!ret) {
 		dbg_hid("ERROR: tm_set_raw_report_state failed!!");
 	}
 	fd->in_raw_mode = 1;
+	if (down_interruptible(&hdev->driver_event_lock)) {
+		dbg_hid("TODO: handle being interrupted here\n");
+		return -EINTR;
+	}
+	
 
 	dbg_hid("%s calling hid_hw_start\n", __func__);
 	ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
