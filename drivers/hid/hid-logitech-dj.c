@@ -22,6 +22,7 @@
  */
 
 
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/hid.h>
 #include <linux/module.h>
@@ -814,6 +815,9 @@ static int logi_dj_probe(struct hid_device *hdev,
 	}
 
 	/* 1 rather than 0 because we up()ed hdev->driver_input_lock: */
+	printk(KERN_ERR "Sleeping for a bit...\n");
+	msleep(20);
+	printk(KERN_ERR "done sleeping\n");
 	return 1;
 
 logi_dj_recv_query_paired_devices_failed:
