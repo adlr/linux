@@ -803,6 +803,9 @@ static int logi_dj_probe(struct hid_device *hdev,
 		goto llopen_failed;
 	}
 
+	/* Allow incoming packets to arrive: */
+	up(&hdev->driver_input_lock);
+
 	retval = logi_dj_recv_query_paired_devices(djrcv_dev);
 	if (retval < 0) {
 		dev_err(&hdev->dev, "%s:logi_dj_recv_query_paired_devices "
@@ -810,10 +813,12 @@ static int logi_dj_probe(struct hid_device *hdev,
 		goto logi_dj_recv_query_paired_devices_failed;
 	}
 
-	return retval;
+	/* 1 rather than 0 because we up()ed hdev->driver_input_lock: */
+	return 1;
 
 logi_dj_recv_query_paired_devices_failed:
 	hdev->ll_driver->close(hdev);
+	down(&hdev->driver_input_lock);
 
 llopen_failed:
 switch_to_dj_mode_fail:
