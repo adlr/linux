@@ -50,6 +50,9 @@ MODULE_LICENSE("GPL");
 // #define WTP_RAW_XY_FEAT_INDEX			0x0F
 #define WTP_RAW_XY_FEAT_ID			0x6100
 
+#define ORIGIN_UPPER_LEFT 0x4
+#define ORIGIN_LOWER_LEFT 0xA
+
 struct hidpp_touchpad_raw_info {
 	u16 x_size;
 	u16 y_size;
@@ -86,6 +89,7 @@ struct wtp_mt_slot {
 struct wtp_data {
 	struct input_dev *input;
 	__u16 x_size, y_size;
+	__u8 origin;
 	__u8 p_range, area_range;
 	__u8 finger_count;
 	__u8 mt_feature_index;
@@ -127,7 +131,8 @@ static void wtp_touch_event(struct wtp_data *fd,
 		input_event(fd->input, EV_ABS, ABS_MT_POSITION_X,
 				touch_report->x);
 		input_event(fd->input, EV_ABS, ABS_MT_POSITION_Y,
-				touch_report->y);
+				fd->origin == ORIGIN_LOWER_LEFT ?
+				fd->y_size - touch_report->y : touch_report->y);
 		input_event(fd->input, EV_ABS, ABS_MT_PRESSURE,
 				touch_report->area);
 	}
@@ -248,6 +253,8 @@ static int hidpp_touchpad_get_raw_info(struct hidpp_device *hidpp_dev,
 	raw_info->x_size = params[0] << 8 | params[1];
 	raw_info->y_size = params[2] << 8 | params[3];
 
+	dbg_hid("ORIGIN: 0x%02x", raw_info->origin);
+
 	return ret;
 }
 
@@ -344,6 +351,7 @@ static int wtp_device_init(struct hidpp_device *hidpp_dev)
 	}
 	fd->x_size = raw_info.x_size;
 	fd->y_size = raw_info.y_size;
+	fd->origin = raw_info.origin;
 	dbg_hid("TP size: X: %d Y: %d\n", fd->x_size, fd->y_size);
 
 	return ret;
