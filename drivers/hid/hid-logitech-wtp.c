@@ -50,8 +50,12 @@ MODULE_LICENSE("GPL");
 // #define WTP_RAW_XY_FEAT_INDEX			0x0F
 #define WTP_RAW_XY_FEAT_ID			0x6100
 
-#define ORIGIN_UPPER_LEFT 0x4
-#define ORIGIN_LOWER_LEFT 0xA
+#define ORIGIN_LOWER_LEFT 0x1
+#define ORIGIN_LOWER_RIGHT 0x2
+#define ORIGIN_UPPER_LEFT 0x3
+#define ORIGIN_UPPER_RIGHT 0x4
+
+#define INCH_TO_MM(inch) (((inch) * 50) / 127)
 
 struct hidpp_touchpad_raw_info {
 	u16 x_size;
@@ -59,8 +63,13 @@ struct hidpp_touchpad_raw_info {
 	u8 z_range;
 	u8 area_range;
 	u8 timestamp_unit;
+	u8 max_fingers;
 	u8 origin;
 	u8 pen_supported;
+	u8 reserved[3];
+	// Resolution is in points per inch
+	u8 res_high;
+	u8 res_low;
 };
 
 struct hidpp_touchpad_raw_xy_finger {
@@ -94,6 +103,7 @@ struct wtp_data {
 	__u8 finger_count;
 	__u8 mt_feature_index;
 	__u8 maxcontacts;
+	__u16 res;  // points per inch
 	struct wtp_mt_slot slots[5];
 };
 
@@ -250,8 +260,8 @@ static int hidpp_touchpad_get_raw_info(struct hidpp_device *hidpp_dev,
 
 	*raw_info = *(struct hidpp_touchpad_raw_info *)params;
 
-	raw_info->x_size = params[0] << 8 | params[1];
-	raw_info->y_size = params[2] << 8 | params[3];
+	raw_info->x_size = be16_to_cpu(raw_info->x_size);
+	raw_info->y_size = be16_to_cpu(raw_info->y_size);
 
 	dbg_hid("ORIGIN: 0x%02x", raw_info->origin);
 
@@ -285,6 +295,7 @@ static int wtp_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	struct hidpp_device *hidpp_dev = hid_get_drvdata(hdev);
 	struct wtp_data *fd = (struct wtp_data *)hidpp_dev->driver_data;
 	struct input_dev *input = hi->input;
+	int res_mm;
 
 	dbg_hid("%s:\n", __func__);
 
@@ -312,6 +323,13 @@ static int wtp_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, fd->y_size, 0, 0);
 	input_set_abs_params(input, ABS_X, 0, fd->x_size, 0, 0);
 	input_set_abs_params(input, ABS_Y, 0, fd->y_size, 0, 0);
+
+	res_mm = INCH_TO_MM(fd->res);
+
+	input_abs_set_res(input, ABS_MT_POSITION_X, res_mm);
+	input_abs_set_res(input, ABS_MT_POSITION_Y, res_mm);
+	input_abs_set_res(input, ABS_X, res_mm);
+	input_abs_set_res(input, ABS_Y, res_mm);
 
 	return 0;
 }
@@ -352,7 +370,11 @@ static int wtp_device_init(struct hidpp_device *hidpp_dev)
 	fd->x_size = raw_info.x_size;
 	fd->y_size = raw_info.y_size;
 	fd->origin = raw_info.origin;
-	dbg_hid("TP size: X: %d Y: %d\n", fd->x_size, fd->y_size);
+	fd->maxcontacts = raw_info.max_fingers;
+	fd->res = (raw_info.res_high << 8) | raw_info.res_low;
+	dbg_hid("TP size: X: %d Y: %d (max cont %d, res %d (x%02x %02x))\n", fd->x_size, fd->y_size,
+		fd->maxcontacts, fd->res, raw_info.res_high,
+		raw_info.res_low);
 
 	return ret;
 }
@@ -379,12 +401,10 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		return -ENOMEM;
 	}
 
-	fd->maxcontacts = 5;
-
 	hidpp_device->driver_data = (void *)fd;
 	hid_set_drvdata(hdev, hidpp_device);
 
-	// hidpp_device->connect_change = wtp_connect_change;
+	hidpp_device->connect_change = wtp_connect_change;
 
 	ret = hid_parse(hdev);
 	if (ret)
