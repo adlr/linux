@@ -389,12 +389,6 @@ static void logi_dj_recv_add_djhid_device(struct dj_receiver_dev *djrcv_dev,
 	djrcv_dev->paired_dj_devices[dj_report->device_index] = dj_dev;
 
 	return;
-
-hid_add_device_fail:
-	djrcv_dev->paired_dj_devices[dj_report->device_index] = NULL;
-	kfree(dj_dev);
-dj_device_allocate_fail:
-	hid_destroy_device(dj_hiddev);
 }
 
 static void delayedwork_callback(struct work_struct *work)
