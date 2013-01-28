@@ -943,9 +943,6 @@ static int logi_dj_probe(struct hid_device *hdev,
 		goto hid_hw_start_fail;
 	}
 
-	/* Allow incoming packets to arrive: */
-	up(&hdev->driver_input_lock);
-
 	retval = logi_dj_recv_switch_to_dj_mode(djrcv_dev, 0);
 	if (retval < 0) {
 		dev_err(&hdev->dev,
@@ -962,6 +959,9 @@ static int logi_dj_probe(struct hid_device *hdev,
 		goto llopen_failed;
 	}
 
+	/* Allow incoming packets to arrive: */
+	up(&hdev->driver_input_lock);
+
 	retval = logi_dj_recv_query_paired_devices(djrcv_dev);
 	if (retval < 0) {
 		dev_err(&hdev->dev, "%s:logi_dj_recv_query_paired_devices "
@@ -977,6 +977,7 @@ static int logi_dj_probe(struct hid_device *hdev,
 
 logi_dj_recv_query_paired_devices_failed:
 	hdev->ll_driver->close(hdev);
+	down(&hdev->driver_input_lock);
 
 llopen_failed:
 switch_to_dj_mode_fail:
@@ -987,11 +988,6 @@ hid_parse_fail:
 	kfifo_free(&djrcv_dev->notif_fifo);
 	kfree(djrcv_dev);
 	hid_set_drvdata(hdev, NULL);
-	if (down_interruptible(&hdev->driver_input_lock)) {
-		/* This is bad. The lock will be up()ed, even though it's
-		   already up. */
-		return -EINTR;
-	}
 	return retval;
 
 }
