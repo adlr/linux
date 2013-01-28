@@ -138,13 +138,17 @@ static void wtp_touch_event(struct wtp_data *fd,
 	input_mt_report_slot_state(fd->input, MT_TOOL_FINGER,
 					touch_report->contact_status);
 	if (touch_report->contact_status) {
+		u8 pressure = touch_report->area;
 		input_event(fd->input, EV_ABS, ABS_MT_POSITION_X,
 				touch_report->x);
 		input_event(fd->input, EV_ABS, ABS_MT_POSITION_Y,
 				fd->origin == ORIGIN_LOWER_LEFT ?
 				fd->y_size - touch_report->y : touch_report->y);
-		input_event(fd->input, EV_ABS, ABS_MT_PRESSURE,
-				touch_report->area);
+		if (touch_report->z) {
+			pressure = ((touch_report->z - 1) << 6) |
+				(touch_report->area >> 2);
+		}
+		input_event(fd->input, EV_ABS, ABS_MT_PRESSURE, pressure);
 	}
 }
 
