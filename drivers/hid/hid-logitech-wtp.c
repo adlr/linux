@@ -72,6 +72,11 @@ struct hidpp_touchpad_raw_info {
 	u8 res_low;
 };
 
+#define CONTACT_STATUS_RELEASED 0
+#define CONTACT_STATUS_TOUCH 1
+#define CONTACT_STATUS_HOVER 2
+#define CONTACT_STATUS_RESERVED 3
+
 struct hidpp_touchpad_raw_xy_finger {
 	u8 contact_type;
 	u8 contact_status;
@@ -85,9 +90,11 @@ struct hidpp_touchpad_raw_xy_finger {
 struct hidpp_touchpad_raw_xy {
 	u16 timestamp;
 	struct hidpp_touchpad_raw_xy_finger fingers[2];
-	u8 spurious_flag;
-	u8 end_of_frame;
-	u8 finger_count;
+	u8 fingers_this_frame;
+	bool proximity_detection:1;
+	bool mechanical_button:1;
+	bool spurious_flag:1;
+	bool end_of_frame:1;
 };
 
 struct wtp_mt_slot {
@@ -104,7 +111,7 @@ struct wtp_data {
 	__u8 mt_feature_index;
 	__u8 maxcontacts;
 	__u16 res;  // points per inch
-	struct wtp_mt_slot slots[5];
+	struct wtp_mt_slot slots[16];
 };
 
 struct touch_hidpp_report {
@@ -153,14 +160,9 @@ static void wtp_touch_event(struct wtp_data *fd,
 }
 
 static int wtp_touchpad_raw_xy_event(struct hidpp_device *hidpp_dev,
-				u8 *event_data)
+				struct hidpp_touchpad_raw_xy *event)
 {
-	struct hidpp_touchpad_raw_xy *raw =
-		(struct hidpp_touchpad_raw_xy *)event_data;
 	struct wtp_data *fd = (struct wtp_data *)hidpp_dev->driver_data;
-
-	int finger_count = raw->finger_count;
-	bool end_of_frame = raw->end_of_frame;
 
 	int i;
 
@@ -172,80 +174,95 @@ static int wtp_touchpad_raw_xy_event(struct hidpp_device *hidpp_dev,
 		return 0;
 	}
 
-
-	if (finger_count) {
-		wtp_touch_event(fd, &(raw->fingers[0]));
-		if ((end_of_frame && finger_count == 4) ||
-			(!end_of_frame && finger_count >= 2))
-			wtp_touch_event(fd, &(raw->fingers[1]));
+	for (i = 0; i < 2; i++) {
+		if (event->fingers[i].contact_status != CONTACT_STATUS_RELEASED)
+			wtp_touch_event(fd, &event->fingers[i]);
 	}
 
-	if (end_of_frame || finger_count <= 2) {
-		for (i = 0; i < ARRAY_SIZE(fd->slots); i++) {
-			if (!fd->slots[i].seen_in_this_frame &&
-				fd->slots[i].touch_state) {
-				input_mt_slot(fd->input, i);
-				input_mt_report_slot_state(fd->input,
-					MT_TOOL_FINGER, 0);
-				fd->slots[i].touch_state = 0;
-			}
-
-			fd->slots[i].seen_in_this_frame = false;
-
-		}
-		input_mt_report_pointer_emulation(fd->input, true);
-		input_report_key(fd->input, BTN_TOOL_FINGER,
-				 finger_count == 1);
-		input_report_key(fd->input, BTN_TOOL_DOUBLETAP,
-				 finger_count == 2);
-		input_report_key(fd->input, BTN_TOOL_TRIPLETAP,
-				 finger_count == 3);
-		input_report_key(fd->input, BTN_TOOL_QUADTAP,
-				 finger_count == 4);
-		input_sync(fd->input);
-	}
+	// if (end_of_frame || finger_count <= 2) {
+	// 	for (i = 0; i < ARRAY_SIZE(fd->slots); i++) {
+	// 		if (!fd->slots[i].seen_in_this_frame &&
+	// 			fd->slots[i].touch_state) {
+	// 			input_mt_slot(fd->input, i);
+	// 			input_mt_report_slot_state(fd->input,
+	// 				MT_TOOL_FINGER, 0);
+	// 			fd->slots[i].touch_state = 0;
+	// 		}
+	// 
+	// 		fd->slots[i].seen_in_this_frame = false;
+	// 
+	// 	}
+	// 	input_mt_report_pointer_emulation(fd->input, true);
+	// 	input_report_key(fd->input, BTN_TOOL_FINGER,
+	// 			 finger_count == 1);
+	// 	input_report_key(fd->input, BTN_TOOL_DOUBLETAP,
+	// 			 finger_count == 2);
+	// 	input_report_key(fd->input, BTN_TOOL_TRIPLETAP,
+	// 			 finger_count == 3);
+	// 	input_report_key(fd->input, BTN_TOOL_QUADTAP,
+	// 			 finger_count == 4);
+	// 	input_sync(fd->input);
+	// }
 	return 1;
 }
 
-
-static void hidpp_touchpad_touch_event(struct touch_hidpp_report *touch_report,
-	struct hidpp_touchpad_raw_xy_finger *finger)
-{
-	u8 x_m = touch_report->x_m << 2;
-	u8 y_m = touch_report->y_m << 2;
-
-	finger->contact_type = touch_report->x_m >> 6;
-	finger->x = x_m << 6 | touch_report->x_l;
-
-	finger->contact_status = touch_report->y_m >> 6;
-	finger->y = y_m << 6 | touch_report->y_l;
-
-	finger->finger_id = touch_report->id >> 4;
-	finger->z = touch_report->z;
-	finger->area = touch_report->area;
-}
 
 static int hidpp_touchpad_raw_xy_event(struct hidpp_device *hidpp_device,
 		struct hidpp_report *hidpp_report)
 {
 	struct dual_touch_hidpp_report *dual_touch_report;
-	struct hidpp_touchpad_raw_xy raw_xy;
-
-	dual_touch_report = (struct dual_touch_hidpp_report *)hidpp_report;
-	raw_xy.end_of_frame = dual_touch_report->touches[0].id & 0x01;
-	raw_xy.spurious_flag = (dual_touch_report->touches[0].id >> 1) & 0x01;
-	raw_xy.finger_count = dual_touch_report->touches[1].id & 0x0f;
-
-	if (raw_xy.finger_count) {
-		hidpp_touchpad_touch_event(&dual_touch_report->touches[0],
-				&raw_xy.fingers[0]);
-		if ((raw_xy.end_of_frame && raw_xy.finger_count == 4) ||
-			(!raw_xy.end_of_frame && raw_xy.finger_count >= 2))
-			hidpp_touchpad_touch_event(
-					&dual_touch_report->touches[1],
-					&raw_xy.fingers[1]);
-	}
-	return wtp_touchpad_raw_xy_event(hidpp_device, (u8 *)&raw_xy);
+	u8 *buf = &hidpp_report->rap.params[0];  /* 4 strips off the DJ header */
+	
+	/* Parse the message into a more convenient struct */
+	struct hidpp_touchpad_raw_xy raw_xy = {
+		(buf[0] << 8) | buf[1],  /* Timestamp */
+		{ {
+			buf[2] >> 6,  /* Contact type */
+			buf[4] >> 6,  /* Contact status */
+			((buf[2] & 0x3f) << 8) | buf[3],  /* X */
+			((buf[4] & 0x3f) << 8) | buf[5],  /* Y */
+			buf[6],  /* Z/Force */
+			buf[7],  /* Area */
+			buf[8] >> 4  /* Finger ID */
+		}, {
+			buf[9] >> 6,  /* Contact type */
+			buf[11] >> 6,  /* Contact status */
+			((buf[9] & 0x3f) << 8) | buf[10],  /* X */
+			((buf[11] & 0x3f) << 8) | buf[12],  /* Y */
+			buf[13],  /* Z/Force */
+			buf[14],  /* Area */
+			buf[15] >> 4  /* Finger ID */
+		} },
+		buf[15] & 0xf,  /* Fingers this frame */
+		(buf[8] & (1 << 3)) != 0,  /* Proximity detection */
+		(buf[8] & (1 << 2)) != 0,  /* Mechanical button */
+		(buf[8] & (1 << 1)) != 0,  /* Spurious flag */
+		(buf[8] & (1 << 0)) != 0,  /* End-of-frame */
+	};
+	
+	dbg_hid("EVT: %d {ty: %d, st: %d, (%d,%d,%d,%d) id:%d} {ty: %d, st: %d, (%d,%d,%d,%d) id:%d} cnt:%d pr:%d but:%d sf:%d eof:%d\n",
+		raw_xy.timestamp,
+		raw_xy.fingers[0].contact_type,
+		raw_xy.fingers[0].contact_status,
+		raw_xy.fingers[0].x,
+		raw_xy.fingers[0].y,
+		raw_xy.fingers[0].z,
+		raw_xy.fingers[0].area,
+		raw_xy.fingers[0].finger_id,
+		raw_xy.fingers[1].contact_type,
+		raw_xy.fingers[1].contact_status,
+		raw_xy.fingers[1].x,
+		raw_xy.fingers[1].y,
+		raw_xy.fingers[1].z,
+		raw_xy.fingers[1].area,
+		raw_xy.fingers[1].finger_id,
+		raw_xy.fingers_this_frame,
+		raw_xy.proximity_detection,
+		raw_xy.mechanical_button,
+		raw_xy.spurious_flag,
+		raw_xy.end_of_frame);
+	return 1;
+	// return wtp_touchpad_raw_xy_event(hidpp_device, &raw_xy);
 }
 
 static int hidpp_touchpad_get_raw_info(struct hidpp_device *hidpp_dev,
