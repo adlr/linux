@@ -644,7 +644,8 @@ static int logi_dj_output_hidraw_report(struct hid_device *hid, u8 * buf,
 {
 	struct dj_device *djdev = hid->driver_data;
 	struct dj_receiver_dev *djrcv_dev = djdev->dj_receiver_dev;
-	struct hid_report hid_report;
+	struct hid_report* report;
+	struct hid_report_enum *output_report_enum;
 	int i;
 
 	/* Called by hid raw to send data */
@@ -658,15 +659,14 @@ static int logi_dj_output_hidraw_report(struct hid_device *hid, u8 * buf,
 		return -1;
 	}
 
-	hid_report = *djrcv_dev->hdev->
-		report_enum[HID_OUTPUT_REPORT].report_id_hash[buf[0]];
-
-	hid_report.field[0]->value[0] = djdev->device_index;
+	output_report_enum = &djrcv_dev->hdev->report_enum[HID_OUTPUT_REPORT];
+	report = output_report_enum->report_id_hash[buf[0]];
+	hid_set_field(report->field[0], 0, djdev->device_index);
 
 	for (i = 2; i < HIDPP_REPORT_LONG_LENGTH - 1; i++)
-		hid_report.field[0]->value[i-1] = buf[i];
+		hid_set_field(report->field[0], i-1, buf[i]);
 
-	usbhid_submit_report(djrcv_dev->hdev, &hid_report, USB_DIR_OUT);
+	usbhid_submit_report(djrcv_dev->hdev, report, USB_DIR_OUT);
 
 	return 0;
 }
