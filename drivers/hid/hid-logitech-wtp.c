@@ -49,13 +49,23 @@ MODULE_LICENSE("GPL");
 #define EVENT_TOUCHPAD_RAW_XY_			0x00
 // #define WTP_RAW_XY_FEAT_INDEX			0x0F
 #define WTP_RAW_XY_FEAT_ID			0x6100
+#define WTP_RAW_XY_EVENT_INDEX			0
 
 #define ORIGIN_LOWER_LEFT 0x1
 #define ORIGIN_LOWER_RIGHT 0x2
 #define ORIGIN_UPPER_LEFT 0x3
 #define ORIGIN_UPPER_RIGHT 0x4
 
-#define INCH_TO_MM(inch) (((inch) * 50) / 127)
+#define ORIGIN_IS_HIGH(origin) ((origin - 1) & 2)
+#define ORIGIN_IS_RIGHT(origin) ((origin - 1) & 1)
+
+#define INCH_TO_MM(inch) (((inch) * 5) / 127)
+
+#define SLOT_COUNT 16
+
+/* The WTP touchpad doesn't supply a resolution, so we hardcode it in
+   this driver. */
+#define WTP_RES 1000  /* 1000 DPI */
 
 struct hidpp_touchpad_raw_info {
 	u16 x_size;
@@ -97,11 +107,6 @@ struct hidpp_touchpad_raw_xy {
 	bool end_of_frame:1;
 };
 
-struct wtp_mt_slot {
-	bool touch_state;	/* is the touch valid? */
-	bool seen_in_this_frame;/* has this slot been updated */
-};
-
 struct wtp_data {
 	struct input_dev *input;
 	__u16 x_size, y_size;
@@ -110,8 +115,11 @@ struct wtp_data {
 	__u8 finger_count;
 	__u8 mt_feature_index;
 	__u8 maxcontacts;
-	__u16 res;  // points per inch
-	struct wtp_mt_slot slots[16];
+	__u16 res;  /* points per inch */
+	__u16 next_tracking_id;
+	__u16 current_slots_used;  /* slots = device IDs. Bitmask. */
+	__u16 prev_slots_used;  /* slots = device IDs. Bitmask. */
+	bool hid_hw_started:1;
 };
 
 struct touch_hidpp_report {
@@ -138,31 +146,31 @@ static void wtp_touch_event(struct wtp_data *fd,
 {
 	int slot = touch_report->finger_id - 1;
 
-	fd->slots[slot].seen_in_this_frame = true;
-	fd->slots[slot].touch_state = touch_report->contact_status;
+	bool new_finger = !(fd->prev_slots_used & (1 << slot));
+	fd->current_slots_used |= 1 << slot;
 
 	input_mt_slot(fd->input, slot);
-	input_mt_report_slot_state(fd->input, MT_TOOL_FINGER,
-					touch_report->contact_status);
-	if (touch_report->contact_status) {
-		u8 pressure = touch_report->area;
-		input_event(fd->input, EV_ABS, ABS_MT_POSITION_X,
-				touch_report->x);
-		input_event(fd->input, EV_ABS, ABS_MT_POSITION_Y,
-				fd->origin == ORIGIN_LOWER_LEFT ?
-				fd->y_size - touch_report->y : touch_report->y);
-		if (touch_report->z) {
-			pressure = ((touch_report->z - 1) << 6) |
-				(touch_report->area >> 2);
-		}
-		input_event(fd->input, EV_ABS, ABS_MT_PRESSURE, pressure);
+	if (new_finger) {
+		input_event(fd->input, EV_ABS, ABS_MT_TRACKING_ID,
+				fd->next_tracking_id++);
+		if (fd->next_tracking_id == 0xffff)
+			fd->next_tracking_id = 1;
 	}
+	input_mt_report_slot_state(fd->input, MT_TOOL_FINGER, 1);
+	input_event(fd->input, EV_ABS, ABS_MT_POSITION_X,
+			ORIGIN_IS_RIGHT(fd->origin) ?
+			fd->x_size - touch_report->x : touch_report->x);
+	input_event(fd->input, EV_ABS, ABS_MT_POSITION_Y,
+			ORIGIN_IS_HIGH(fd->origin) ?
+			touch_report->y : fd->y_size - touch_report->y);
+	input_event(fd->input, EV_ABS, ABS_MT_PRESSURE, touch_report->area);
 }
 
 static int wtp_touchpad_raw_xy_event(struct hidpp_device *hidpp_dev,
 				struct hidpp_touchpad_raw_xy *event)
 {
 	struct wtp_data *fd = (struct wtp_data *)hidpp_dev->driver_data;
+	u8 finger_count = event->fingers_this_frame;
 
 	int i;
 
@@ -179,30 +187,33 @@ static int wtp_touchpad_raw_xy_event(struct hidpp_device *hidpp_dev,
 			wtp_touch_event(fd, &event->fingers[i]);
 	}
 
-	// if (end_of_frame || finger_count <= 2) {
-	// 	for (i = 0; i < ARRAY_SIZE(fd->slots); i++) {
-	// 		if (!fd->slots[i].seen_in_this_frame &&
-	// 			fd->slots[i].touch_state) {
-	// 			input_mt_slot(fd->input, i);
-	// 			input_mt_report_slot_state(fd->input,
-	// 				MT_TOOL_FINGER, 0);
-	// 			fd->slots[i].touch_state = 0;
-	// 		}
-	// 
-	// 		fd->slots[i].seen_in_this_frame = false;
-	// 
-	// 	}
-	// 	input_mt_report_pointer_emulation(fd->input, true);
-	// 	input_report_key(fd->input, BTN_TOOL_FINGER,
-	// 			 finger_count == 1);
-	// 	input_report_key(fd->input, BTN_TOOL_DOUBLETAP,
-	// 			 finger_count == 2);
-	// 	input_report_key(fd->input, BTN_TOOL_TRIPLETAP,
-	// 			 finger_count == 3);
-	// 	input_report_key(fd->input, BTN_TOOL_QUADTAP,
-	// 			 finger_count == 4);
-	// 	input_sync(fd->input);
-	// }
+	if (event->end_of_frame || finger_count <= 2) {
+		for (i = 0; i < SLOT_COUNT; i++) {
+			__u16 slot_mask = 1 << i;
+			bool released = (fd->prev_slots_used & slot_mask) &&
+				!(fd->current_slots_used & slot_mask);
+			if (!released)
+				continue;
+			input_mt_slot(fd->input, i);
+			input_event(fd->input, EV_ABS, ABS_MT_TRACKING_ID, -1);
+			input_mt_report_slot_state(fd->input, MT_TOOL_FINGER, 0);
+		}
+		input_mt_report_pointer_emulation(fd->input, true);
+		input_report_key(fd->input, BTN_TOOL_FINGER,
+				 finger_count == 1);
+		input_report_key(fd->input, BTN_TOOL_DOUBLETAP,
+				 finger_count == 2);
+		input_report_key(fd->input, BTN_TOOL_TRIPLETAP,
+				 finger_count == 3);
+		input_report_key(fd->input, BTN_TOOL_QUADTAP,
+				 finger_count == 4);
+		input_report_key(fd->input, BTN_LEFT,
+				 event->mechanical_button);
+		input_sync(fd->input);
+		
+		fd->prev_slots_used = fd->current_slots_used;
+		fd->current_slots_used = 0;
+	}
 	return 1;
 }
 
@@ -212,7 +223,8 @@ static int hidpp_touchpad_raw_xy_event(struct hidpp_device *hidpp_device,
 {
 	struct dual_touch_hidpp_report *dual_touch_report;
 	u8 *buf = &hidpp_report->rap.params[0];  /* 4 strips off the DJ header */
-	
+	struct wtp_data *fd = (struct wtp_data *)hidpp_device->driver_data;
+
 	/* Parse the message into a more convenient struct */
 	struct hidpp_touchpad_raw_xy raw_xy = {
 		(buf[0] << 8) | buf[1],  /* Timestamp */
@@ -239,7 +251,16 @@ static int hidpp_touchpad_raw_xy_event(struct hidpp_device *hidpp_device,
 		(buf[8] & (1 << 1)) != 0,  /* Spurious flag */
 		(buf[8] & (1 << 0)) != 0,  /* End-of-frame */
 	};
-	
+
+	/* Ensure we get the proper raw data report here. We do this after
+	   the parsing above to avoid mixed declarations and code. */
+	if (hidpp_report->report_id != REPORT_ID_HIDPP_LONG ||
+		hidpp_report->rap.sub_id != fd->mt_feature_index ||
+		(hidpp_report->rap.reg_address >> 4) != WTP_RAW_XY_EVENT_INDEX) {
+		dbg_hid("Unhandled event type\n");
+		return 0;
+	}
+
 	dbg_hid("EVT: %d {ty: %d, st: %d, (%d,%d,%d,%d) id:%d} {ty: %d, st: %d, (%d,%d,%d,%d) id:%d} cnt:%d pr:%d but:%d sf:%d eof:%d\n",
 		raw_xy.timestamp,
 		raw_xy.fingers[0].contact_type,
@@ -261,8 +282,7 @@ static int hidpp_touchpad_raw_xy_event(struct hidpp_device *hidpp_device,
 		raw_xy.mechanical_button,
 		raw_xy.spurious_flag,
 		raw_xy.end_of_frame);
-	return 1;
-	// return wtp_touchpad_raw_xy_event(hidpp_device, &raw_xy);
+	return wtp_touchpad_raw_xy_event(hidpp_device, &raw_xy);
 }
 
 static int hidpp_touchpad_get_raw_info(struct hidpp_device *hidpp_dev,
@@ -297,7 +317,7 @@ static int hidpp_touchpad_set_raw_report_state(struct hidpp_device *hidpp_dev,
 	struct wtp_data *fd = hidpp_dev->driver_data;
 	struct hidpp_report response;
 	int ret;
-	u8 params = send_raw_reports | force_vs_area << 1 |
+	u8 params = send_raw_reports | /*force_vs_area << 1 |*/
 				sensor_enhanced_settings << 2;
 
 	ret = hidpp_send_fap_command_sync(hidpp_dev, fd->mt_feature_index,
@@ -333,7 +353,7 @@ static int wtp_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 
 	__set_bit(EV_ABS, input->evbit);
 
-	input_mt_init_slots(input, fd->maxcontacts);
+	input_mt_init_slots(input, SLOT_COUNT);
 
 	input_set_capability(input, EV_KEY, BTN_TOUCH);
 
@@ -357,9 +377,9 @@ static int wtp_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 
 static void wtp_connect_change(struct hidpp_device *hidpp_dev, bool connected)
 {
-	// dbg_hid("%s: connected:%d\n", __func__, connected);
-	// if ((connected) && (hidpp_dev->initialized))
-	// 	hidpp_touchpad_set_raw_report_state(hidpp_dev, true, true, true);
+	dbg_hid("%s: connected:%d\n", __func__, connected);
+	if (connected && hidpp_dev->initialized)
+		hidpp_touchpad_set_raw_report_state(hidpp_dev, true, true, true);
 }
 
 static int wtp_device_init(struct hidpp_device *hidpp_dev)
@@ -396,6 +416,8 @@ static int wtp_device_init(struct hidpp_device *hidpp_dev)
 	dbg_hid("TP size: X: %d Y: %d (max cont %d, res %d (x%02x %02x))\n", fd->x_size, fd->y_size,
 		fd->maxcontacts, fd->res, raw_info.res_high,
 		raw_info.res_low);
+	if (!fd->res)
+		fd->res = WTP_RES;
 
 	return ret;
 }
@@ -421,6 +443,7 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		kfree(hidpp_device);
 		return -ENOMEM;
 	}
+	fd->next_tracking_id = 1;
 
 	hidpp_device->driver_data = (void *)fd;
 	hid_set_drvdata(hdev, hidpp_device);
@@ -472,6 +495,7 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
 	if (ret)
 		goto failed;
+	fd->hid_hw_started = 1;
 
 	return 0;
 
