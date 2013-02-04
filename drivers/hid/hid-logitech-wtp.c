@@ -38,16 +38,11 @@ MODULE_LICENSE("GPL");
 #include "hid-ids.h"
 #include "hid-logitech-hidpp.h"
 
-#define X_SIZE 3700
-#define Y_SIZE 2480
 #define SOFTWARE_ID 0xB
 
 #define CMD_TOUCHPAD_GET_RAW_INFO		0x01
 #define CMD_TOUCHPAD_GET_RAW_REPORT_STATE	0x11
 #define CMD_TOUCHPAD_SET_RAW_REPORT_STATE	0x21
-#define EVENT_TOUCHPAD_RAW_XY			0x30
-#define EVENT_TOUCHPAD_RAW_XY_			0x00
-// #define WTP_RAW_XY_FEAT_INDEX			0x0F
 #define WTP_RAW_XY_FEAT_ID			0x6100
 #define WTP_RAW_XY_EVENT_INDEX			0
 
@@ -59,34 +54,21 @@ MODULE_LICENSE("GPL");
 #define ORIGIN_IS_HIGH(origin) ((origin - 1) & 2)
 #define ORIGIN_IS_RIGHT(origin) ((origin - 1) & 1)
 
-#define INCH_TO_MM(inch) (((inch) * 5) / 127)
+/* Converts a value in DPI to dots-per-millimeter */
+#define DPI_TO_DPMM(dpi) (((dpi) * 5) / 127)
 
 #define SLOT_COUNT 16
 
 /* The WTP touchpad doesn't supply a resolution, so we hardcode it in
    this driver. */
-#define WTP_RES 1000  /* 1000 DPI */
-
-struct hidpp_touchpad_raw_info {
-	u16 x_size;
-	u16 y_size;
-	u8 z_range;
-	u8 area_range;
-	u8 timestamp_unit;
-	u8 max_fingers;
-	u8 origin;
-	u8 pen_supported;
-	u8 reserved[3];
-	// Resolution is in points per inch
-	u8 res_high;
-	u8 res_low;
-};
+#define WTP_RES 1000  /* DPI */
 
 #define CONTACT_STATUS_RELEASED 0
 #define CONTACT_STATUS_TOUCH 1
 #define CONTACT_STATUS_HOVER 2
 #define CONTACT_STATUS_RESERVED 3
 
+/* These two structs represent a single raw data input message */
 struct hidpp_touchpad_raw_xy_finger {
 	u8 contact_type;
 	u8 contact_status;
@@ -96,7 +78,6 @@ struct hidpp_touchpad_raw_xy_finger {
 	u8 area;
 	u8 finger_id;
 };
-
 struct hidpp_touchpad_raw_xy {
 	u16 timestamp;
 	struct hidpp_touchpad_raw_xy_finger fingers[2];
@@ -109,36 +90,21 @@ struct hidpp_touchpad_raw_xy {
 
 struct wtp_data {
 	struct input_dev *input;
+
+	/* Properties of the device. Filled by hidpp_touchpad_get_raw_info() */
 	__u16 x_size, y_size;
 	__u8 origin;
-	__u8 p_range, area_range;
-	__u8 finger_count;
-	__u8 mt_feature_index;
+	__u8 z_range, area_range;
 	__u8 maxcontacts;
 	__u16 res;  /* points per inch */
+
+	/* Feature index of the raw data feature */
+	__u8 mt_feature_index;
+
+	/* For assigning tracking IDs for MT-B protocol. */
 	__u16 next_tracking_id;
 	__u16 current_slots_used;  /* slots = device IDs. Bitmask. */
 	__u16 prev_slots_used;  /* slots = device IDs. Bitmask. */
-	bool hid_hw_started:1;
-};
-
-struct touch_hidpp_report {
-	u8 x_m;
-	u8 x_l;
-	u8 y_m;
-	u8 y_l;
-	u8 z;
-	u8 area;
-	u8 id;
-};
-
-struct dual_touch_hidpp_report {
-	u8 report_id;
-	u8 device_index;
-	u8 feature_index;
-	u8 broadcast_event;
-	u16 timestamp;
-	struct touch_hidpp_report touches[2];
 };
 
 static void wtp_touch_event(struct wtp_data *fd,
@@ -174,13 +140,8 @@ static int wtp_touchpad_raw_xy_event(struct hidpp_device *hidpp_dev,
 
 	int i;
 
-	if (!hidpp_dev->initialized) {
+	if (!hidpp_dev->initialized)
 		return 0;
-	}
-	if (!fd->input) {
-		dbg_hid("CRASH at %s:%d\n", __func__, __LINE__);
-		return 0;
-	}
 
 	for (i = 0; i < 2; i++) {
 		if (event->fingers[i].contact_status != CONTACT_STATUS_RELEASED)
@@ -207,6 +168,8 @@ static int wtp_touchpad_raw_xy_event(struct hidpp_device *hidpp_dev,
 				 finger_count == 3);
 		input_report_key(fd->input, BTN_TOOL_QUADTAP,
 				 finger_count == 4);
+		input_report_key(fd->input, BTN_TOOL_QUINTTAP,
+				 finger_count == 5);
 		input_report_key(fd->input, BTN_LEFT,
 				 event->mechanical_button);
 		input_sync(fd->input);
@@ -221,7 +184,6 @@ static int wtp_touchpad_raw_xy_event(struct hidpp_device *hidpp_dev,
 static int hidpp_touchpad_raw_xy_event(struct hidpp_device *hidpp_device,
 		struct hidpp_report *hidpp_report)
 {
-	struct dual_touch_hidpp_report *dual_touch_report;
 	u8 *buf = &hidpp_report->rap.params[0];  /* 4 strips off the DJ header */
 	struct wtp_data *fd = (struct wtp_data *)hidpp_device->driver_data;
 
@@ -285,8 +247,7 @@ static int hidpp_touchpad_raw_xy_event(struct hidpp_device *hidpp_device,
 	return wtp_touchpad_raw_xy_event(hidpp_device, &raw_xy);
 }
 
-static int hidpp_touchpad_get_raw_info(struct hidpp_device *hidpp_dev,
-	struct hidpp_touchpad_raw_info *raw_info)
+static int hidpp_touchpad_get_raw_info(struct hidpp_device *hidpp_dev)
 {
 	struct wtp_data *fd = hidpp_dev->driver_data;
 	struct hidpp_report response;
@@ -299,26 +260,33 @@ static int hidpp_touchpad_get_raw_info(struct hidpp_device *hidpp_dev,
 	if (ret)
 		return -ret;
 
-	*raw_info = *(struct hidpp_touchpad_raw_info *)params;
-
-	raw_info->x_size = be16_to_cpu(raw_info->x_size);
-	raw_info->y_size = be16_to_cpu(raw_info->y_size);
-
-	dbg_hid("ORIGIN: 0x%02x", raw_info->origin);
+	fd->x_size = (params[0] << 8) | params[1];
+	fd->y_size = (params[2] << 8) | params[3];
+	fd->z_range = params[4];
+	fd->area_range = params[5];
+	fd->maxcontacts = params[7];
+	fd->origin = params[8];
+	fd->res = (params[13] << 8) | params[14];
+	if (!fd->res)
+		fd->res = WTP_RES;
 
 	return ret;
 }
 
-static int hidpp_touchpad_set_raw_report_state(struct hidpp_device *hidpp_dev,
-				bool send_raw_reports,
-				bool force_vs_area,
-				bool sensor_enhanced_settings)
+static int hidpp_touchpad_set_raw_report_state(struct hidpp_device *hidpp_dev)
 {
 	struct wtp_data *fd = hidpp_dev->driver_data;
 	struct hidpp_report response;
 	int ret;
-	u8 params = send_raw_reports | /*force_vs_area << 1 |*/
-				sensor_enhanced_settings << 2;
+
+	/* Params:
+		0x01 - enable raw
+		0x02 - 16bit Z, no area
+		0x04 - enhanced sensitivity
+		0x08 - width, height instead of area
+		0x10 - send raw + gestures (degrades smoothness)
+		remaining bits - reserved */
+	u8 params = 0x5;
 
 	ret = hidpp_send_fap_command_sync(hidpp_dev, fd->mt_feature_index,
 		CMD_TOUCHPAD_SET_RAW_REPORT_STATE, &params, 1, &response);
@@ -350,6 +318,7 @@ static int wtp_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	__set_bit(BTN_TOOL_DOUBLETAP, input->keybit);
 	__set_bit(BTN_TOOL_TRIPLETAP, input->keybit);
 	__set_bit(BTN_TOOL_QUADTAP, input->keybit);
+	__set_bit(BTN_TOOL_QUINTTAP, input->keybit);
 
 	__set_bit(EV_ABS, input->evbit);
 
@@ -357,15 +326,13 @@ static int wtp_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 
 	input_set_capability(input, EV_KEY, BTN_TOUCH);
 
-	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
-	input_set_abs_params(input, ABS_MT_TOUCH_MINOR, 0, 255, 0, 0);
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_X, 0, fd->x_size, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, fd->y_size, 0, 0);
 	input_set_abs_params(input, ABS_X, 0, fd->x_size, 0, 0);
 	input_set_abs_params(input, ABS_Y, 0, fd->y_size, 0, 0);
 
-	res_mm = INCH_TO_MM(fd->res);
+	res_mm = DPI_TO_DPMM(fd->res);
 
 	input_abs_set_res(input, ABS_MT_POSITION_X, res_mm);
 	input_abs_set_res(input, ABS_MT_POSITION_Y, res_mm);
@@ -379,18 +346,16 @@ static void wtp_connect_change(struct hidpp_device *hidpp_dev, bool connected)
 {
 	dbg_hid("%s: connected:%d\n", __func__, connected);
 	if (connected && hidpp_dev->initialized)
-		hidpp_touchpad_set_raw_report_state(hidpp_dev, true, true, true);
+		hidpp_touchpad_set_raw_report_state(hidpp_dev);
 }
 
 static int wtp_device_init(struct hidpp_device *hidpp_dev)
 {
 	int ret;
-	struct hidpp_touchpad_raw_info raw_info = {};
-	struct wtp_data *fd = (struct wtp_data *)hidpp_dev->driver_data;
 
 	dbg_hid("%s\n", __func__);
 
-	ret = hidpp_touchpad_set_raw_report_state(hidpp_dev, true, true, true);
+	ret = hidpp_touchpad_set_raw_report_state(hidpp_dev);
 
 	if (ret) {
 		hid_err(hidpp_dev->hid_dev, "unable to set to raw report mode. "
@@ -398,34 +363,14 @@ static int wtp_device_init(struct hidpp_device *hidpp_dev)
 		return ret;
 	}
 
-	ret = hidpp_touchpad_get_raw_info(hidpp_dev, &raw_info);
-
-	if (!ret) {
-		if ((X_SIZE != raw_info.x_size) || (Y_SIZE != raw_info.y_size))
-			hid_err(hidpp_dev->hid_dev,
-				"error getting size. Should have %dx%d, "
-				"but device reported %dx%d, ignoring\n",
-				X_SIZE, Y_SIZE,
-				raw_info.x_size, raw_info.y_size);
-	}
-	fd->x_size = raw_info.x_size;
-	fd->y_size = raw_info.y_size;
-	fd->origin = raw_info.origin;
-	fd->maxcontacts = raw_info.max_fingers;
-	fd->res = (raw_info.res_high << 8) | raw_info.res_low;
-	dbg_hid("TP size: X: %d Y: %d (max cont %d, res %d (x%02x %02x))\n", fd->x_size, fd->y_size,
-		fd->maxcontacts, fd->res, raw_info.res_high,
-		raw_info.res_low);
-	if (!fd->res)
-		fd->res = WTP_RES;
-
+	ret = hidpp_touchpad_get_raw_info(hidpp_dev);
 	return ret;
 }
 
 static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
-	struct wtp_data *fd;
-	struct hidpp_device *hidpp_device;
+	struct wtp_data *fd = NULL;
+	struct hidpp_device *hidpp_device = NULL;
 	int ret;
 	struct hidpp_report response;
 
@@ -434,14 +379,15 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	hidpp_device = kzalloc(sizeof(struct hidpp_device), GFP_KERNEL);
 	if (!hidpp_device) {
 		hid_err(hdev, "cannot allocate hidpp_device\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto hidpp_alloc_failed;
 	}
 
 	fd = kzalloc(sizeof(struct wtp_data), GFP_KERNEL);
 	if (!fd) {
 		hid_err(hdev, "cannot allocate wtp Touch data\n");
-		kfree(hidpp_device);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto fd_alloc_failed;
 	}
 	fd->next_tracking_id = 1;
 
@@ -451,12 +397,16 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	hidpp_device->connect_change = wtp_connect_change;
 
 	ret = hid_parse(hdev);
-	if (ret)
+	if (ret) {
+		ret = -ENODEV;
 		goto parse_failed;
+	}
 
 	ret = hidpp_init(hidpp_device, hdev);
-	if (ret)
-		goto failed;
+	if (ret) {
+		ret = -ENODEV;
+		goto parse_failed;
+	}
 
 	up(&hdev->driver_input_lock);
 
@@ -467,11 +417,14 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 					NULL, 0, &response);
 	if (ret) {
 		dbg_hid("send root cmd returned: %d", ret);
+		ret = -ENODEV;
 		goto failed;
 	}
 	
 	dbg_hid("HID++ version: %d.%d\n", response.rap.params[0],
 		response.rap.params[1]);
+
+	/* TODO(adlr): Consider requiring a specific/minimum HID++ version. */
 
 	ret = hidpp_get_hidpp2_feature_index(hidpp_device,
 						SOFTWARE_ID,
@@ -479,33 +432,33 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 						&fd->mt_feature_index);
 	if (ret) {
 		dbg_hid("Get raw_xy feature idx failed: %d", ret);
+		ret = -ENODEV;
 		goto failed;
 	}
 
 	wtp_device_init(hidpp_device);
 
-	if (down_interruptible(&hdev->driver_input_lock)) {
-		/* This is bad. The lock will be up()ed, even though it's
-		   already up. */
-		goto failed;
-	}
+	down(&hdev->driver_input_lock);
 
 	hidpp_device->raw_event = hidpp_touchpad_raw_xy_event;
 
 	ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
-	if (ret)
-		goto failed;
-	fd->hid_hw_started = 1;
+	if (ret) {
+		ret = -ENODEV;
+		goto parse_failed;
+	}
 
 	return 0;
 
 failed:
-	//hid_hw_stop(hdev);
+	down(&hdev->driver_input_lock);
 parse_failed:
-	kfree(hidpp_device->driver_data);
-	kfree(hidpp_device);
 	hid_set_drvdata(hdev, NULL);
-	return -ENODEV;
+	kfree(fd);
+fd_alloc_failed:
+	kfree(hidpp_device);
+hidpp_alloc_failed:
+	return ret;//-ENODEV;
 }
 
 static void wtp_remove(struct hid_device *hdev)
