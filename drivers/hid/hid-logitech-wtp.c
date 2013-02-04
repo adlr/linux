@@ -38,6 +38,10 @@ MODULE_LICENSE("GPL");
 #include "hid-ids.h"
 #include "hid-logitech-hidpp.h"
 
+static bool use_raw_mode = true;
+module_param(use_raw_mode, bool, 0644);
+MODULE_PARM_DESC(use_raw_mode, "Use raw mode");
+
 #define SOFTWARE_ID 0xB
 
 #define CMD_TOUCHPAD_GET_RAW_INFO		0x01
@@ -90,6 +94,7 @@ struct hidpp_touchpad_raw_xy {
 
 struct wtp_data {
 	struct input_dev *input;
+	struct hidpp_device *hidpp_dev;
 
 	/* Properties of the device. Filled by hidpp_touchpad_get_raw_info() */
 	__u16 x_size, y_size;
@@ -105,6 +110,16 @@ struct wtp_data {
 	__u16 next_tracking_id;
 	__u16 current_slots_used;  /* slots = device IDs. Bitmask. */
 	__u16 prev_slots_used;  /* slots = device IDs. Bitmask. */
+
+	/* For switching to/from raw mode */
+	bool currently_in_raw_mode:1;
+
+	/* For delayed work */
+	struct work_struct work;
+	struct kfifo delayed_work_fifo;
+};
+enum delayed_work_type {
+	RAW_MODE_SWITCH
 };
 
 static void wtp_touch_event(struct wtp_data *fd,
@@ -217,6 +232,20 @@ static int hidpp_touchpad_raw_xy_event(struct hidpp_device *hidpp_device,
 		(buf[8] & (1 << 0)) != 0,  /* End-of-frame */
 	};
 
+	if (fd->currently_in_raw_mode != use_raw_mode) {
+		/* Queue mode switch */
+		enum delayed_work_type work_type = RAW_MODE_SWITCH;
+
+		kfifo_in(&fd->delayed_work_fifo, &work_type,
+			 sizeof(enum delayed_work_type));
+
+		if (schedule_work(&fd->work) == 0) {
+			dbg_hid("%s: did not schedule the work item,"
+				" was already queued\n",
+				__func__);
+		}
+	}
+
 	/* Ensure we get the proper raw data report here. We do this after
 	   the parsing above to avoid mixed declarations and code. */
 	if (hidpp_report->report_id != REPORT_ID_HIDPP_LONG ||
@@ -276,7 +305,8 @@ static int hidpp_touchpad_get_raw_info(struct hidpp_device *hidpp_dev)
 	return ret;
 }
 
-static int hidpp_touchpad_set_raw_report_state(struct hidpp_device *hidpp_dev)
+static int hidpp_touchpad_set_raw_report_state(struct hidpp_device *hidpp_dev,
+						bool raw_mode)
 {
 	struct wtp_data *fd = hidpp_dev->driver_data;
 	struct hidpp_report response;
@@ -289,7 +319,9 @@ static int hidpp_touchpad_set_raw_report_state(struct hidpp_device *hidpp_dev)
 		0x08 - width, height instead of area
 		0x10 - send raw + gestures (degrades smoothness)
 		remaining bits - reserved */
-	u8 params = 0x5;
+	u8 params = raw_mode ? 0x5 : 0;
+
+	dbg_hid("Changing raw mode enabled to %d", raw_mode);
 
 	ret = hidpp_send_fap_command_sync(hidpp_dev, fd->mt_feature_index,
 		CMD_TOUCHPAD_SET_RAW_REPORT_STATE, &params, 1, &response);
@@ -297,7 +329,35 @@ static int hidpp_touchpad_set_raw_report_state(struct hidpp_device *hidpp_dev)
 	if (ret)
 		return -ret;
 
+	fd->currently_in_raw_mode = raw_mode;
+
 	return ret;
+}
+
+static void delayed_work_cb(struct work_struct *work)
+{
+	struct wtp_data *fd = container_of(work, struct wtp_data, work);
+	int count;
+	enum delayed_work_type work_type;
+
+	dbg_hid("%s\n", __func__);
+
+	count = kfifo_out(&fd->delayed_work_fifo, &work_type,
+				sizeof(enum delayed_work_type));
+
+	if (count != sizeof(enum delayed_work_type)) {
+		dbg_hid("%s: workitem triggered without "
+			"notifications available\n", __func__);
+		return;
+	}
+
+	switch (work_type) {
+	case RAW_MODE_SWITCH:
+		hidpp_touchpad_set_raw_report_state(fd->hidpp_dev, use_raw_mode);
+		break;
+	default:
+		dbg_hid("%s: unexpected report type\n", __func__);
+	}
 }
 
 static int wtp_input_mapping(struct hid_device *hdev, struct hid_input *hi,
@@ -349,21 +409,24 @@ static void wtp_connect_change(struct hidpp_device *hidpp_dev, bool connected)
 {
 	dbg_hid("%s: connected:%d\n", __func__, connected);
 	if (connected && hidpp_dev->initialized)
-		hidpp_touchpad_set_raw_report_state(hidpp_dev);
+		hidpp_touchpad_set_raw_report_state(hidpp_dev, use_raw_mode);
 }
 
 static int wtp_device_init(struct hidpp_device *hidpp_dev)
 {
-	int ret;
+	int ret = 0;
 
 	dbg_hid("%s\n", __func__);
+	
+	if (use_raw_mode) {
+		ret = hidpp_touchpad_set_raw_report_state(hidpp_dev, true);
 
-	ret = hidpp_touchpad_set_raw_report_state(hidpp_dev);
-
-	if (ret) {
-		hid_err(hidpp_dev->hid_dev, "unable to set to raw report mode. "
-			"The device may not be in range.\n");
-		return ret;
+		if (ret) {
+			hid_err(hidpp_dev->hid_dev,
+				"unable to set to raw report mode. "
+				"The device may not be in range.\n");
+			return ret;
+		}
 	}
 
 	ret = hidpp_touchpad_get_raw_info(hidpp_dev);
@@ -396,6 +459,16 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 
 	hidpp_device->driver_data = (void *)fd;
 	hid_set_drvdata(hdev, hidpp_device);
+	fd->hidpp_dev = hidpp_device;
+
+	INIT_WORK(&fd->work, delayed_work_cb);
+	if (kfifo_alloc(&fd->delayed_work_fifo,
+			4 * sizeof(enum delayed_work_type),
+			GFP_KERNEL)) {
+		hid_err(hdev, "failed allocating delayed_work_fifo\n");
+		ret = -ENOMEM;
+		goto kfifo_failed;
+	}
 
 	hidpp_device->connect_change = wtp_connect_change;
 
@@ -454,6 +527,9 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	return 0;
 
 failed:
+	cancel_work_sync(&fd->work);
+	kfifo_free(&fd->delayed_work_fifo);
+kfifo_failed:
 	hid_set_drvdata(hdev, NULL);
 	kfree(fd);
 fd_alloc_failed:
@@ -467,6 +543,8 @@ static void wtp_remove(struct hid_device *hdev)
 	struct hidpp_device *hidpp_dev = hid_get_drvdata(hdev);
 	struct wtp_data *fd = hidpp_dev->driver_data;
 	dbg_hid("%s\n", __func__);
+	cancel_work_sync(&fd->work);
+	kfifo_free(&fd->delayed_work_fifo);
 	hid_hw_stop(hdev);
 	hidpp_remove(hidpp_dev);
 	kfree(fd);
