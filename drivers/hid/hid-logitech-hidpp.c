@@ -74,7 +74,9 @@ static int __hidpp_send_report(struct hid_device *hdev,
 						 sizeof(struct hidpp_report),
 						 HID_OUTPUT_REPORT);
 
-	return (sent_bytes < 0) ? sent_bytes : 0;
+	/* It seems that sending via bluetooth can return -EIO even
+	 * when the message is delivered, so we have this hack: */
+	return (sent_bytes < 0 && sent_bytes != -EIO) ? sent_bytes : 0;
 }
 
 static int hidpp_send_message_sync(struct hidpp_device *hidpp_dev,
@@ -154,6 +156,9 @@ int hidpp_send_rap_command_sync(struct hidpp_device *hidpp_dev,
 
 	memset(&message, 0, sizeof(message));
 	message.report_id = report_id;
+	/* If sending to a non-DJ device, device expects 0xff. If sending to
+	 * a DJ device, this device_index will be overwritten by the DJ code: */
+	message.device_index = 0xff;
 	message.rap.sub_id = sub_id;
 	message.rap.reg_address = reg_address;
 	memcpy(&message.rap.params, params, param_count);
@@ -174,7 +179,7 @@ int hidpp_get_hidpp2_feature_index(struct hidpp_device *hidpp_dev,
 	params[0] = feature_id >> 8;
 	params[1] = feature_id & 0xff;
 	ret = hidpp_send_hidpp2_sync(hidpp_dev,
-					REPORT_ID_HIDPP_SHORT,
+					REPORT_ID_HIDPP_LONG,
 					0,
 					0,
 					software_id,

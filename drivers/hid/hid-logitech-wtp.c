@@ -487,7 +487,7 @@ static int wtp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	hid_device_io_start(hdev);
 
 	/* Get hid++ version number */
-	ret = hidpp_send_hidpp2_sync(hidpp_device, REPORT_ID_HIDPP_SHORT,
+	ret = hidpp_send_hidpp2_sync(hidpp_device, REPORT_ID_HIDPP_LONG,
 					0, 1,
 					SOFTWARE_ID,
 					NULL, 0, &response);
@@ -555,6 +555,7 @@ static void wtp_remove(struct hid_device *hdev)
 static const struct hid_device_id wtp_devices[] = {
 	{HID_DEVICE(BUS_DJ, USB_VENDOR_ID_LOGITECH, UNIFYING_DEVICE_ID_WIRELESS_TOUCHPAD) },
 	{HID_DEVICE(BUS_DJ, USB_VENDOR_ID_LOGITECH, UNIFYING_DEVICE_ID_WIRELESS_TOUCHPAD_T650) },
+	{HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_WIRELESS_TOUCHPAD_T651) },
 	{ }
 };
 MODULE_DEVICE_TABLE(hid, wtp_devices);
