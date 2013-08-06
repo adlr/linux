@@ -455,76 +455,76 @@ struct rmi_fn_41_data {
 	struct input_dev *input;
 };
 
-static void rmi_f41_free_memory(struct rmi_function_dev *fn_dev)
+static void rmi_f41_free_memory(struct rmi_function *fn)
 {
-	struct rmi_fn_41_data *f41 = fn_dev->data;
+	struct rmi_fn_41_data *f41 = fn->data;
 	int i;
 
 	/* query */
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_query);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_query);
 	/* control */
 	for (i = 0; i < ARRAY_SIZE(attrs_ctrl); i++) {
 		if (f41->attrs_ctrl_regs_exist[i])
-			sysfs_remove_group(&fn_dev->dev.kobj, &attrs_ctrl[i]);
+			sysfs_remove_group(&fn->dev.kobj, &attrs_ctrl[i]);
 	}
 	for (i = 0; i < ARRAY_SIZE(attrs_data); i++) {
 		if (f41->attrs_data_regs_exist[i])
-			sysfs_remove_group(&fn_dev->dev.kobj, &attrs_data[i]);
+			sysfs_remove_group(&fn->dev.kobj, &attrs_data[i]);
 	}
 }
 
 
-static int rmi_f41_initialize(struct rmi_function_dev *fn_dev)
+static int rmi_f41_initialize(struct rmi_function *fn)
 {
 	struct rmi_fn_41_data *f41;
 	struct rmi_device_platform_data *pdata;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
 	int retval = 0;
 	u16 next_loc;
 	int i;
 	u8 *data_loc;
 
-	f41 = devm_kzalloc(&fn_dev->dev, sizeof(struct rmi_fn_41_data),
+	f41 = devm_kzalloc(&fn->dev, sizeof(struct rmi_fn_41_data),
 				GFP_KERNEL);
 	if (!f41) {
-		dev_err(&fn_dev->dev, "Failed to allocate rmi_fn_41_data.\n");
+		dev_err(&fn->dev, "Failed to allocate rmi_fn_41_data.\n");
 		return -ENOMEM;
 	}
-	fn_dev->data = f41;
+	fn->data = f41;
 
 	/* Read F41 Query Data */
-	f41->query.address = fn_dev->fd.query_base_addr;
-	retval = rmi_read_block(fn_dev->rmi_dev, f41->query.address,
+	f41->query.address = fn->fd.query_base_addr;
+	retval = rmi_read_block(fn->rmi_dev, f41->query.address,
 		(u8 *)&f41->query, sizeof(f41->query.regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read query registers from 0x%04x\n",
+		dev_err(&fn->dev, "Could not read query registers from 0x%04x\n",
 				f41->query.address);
 		return retval;
 	}
 
 	/* Initialize Control Data */
-	next_loc = fn_dev->fd.control_base_addr;
+	next_loc = fn->fd.control_base_addr;
 
 	if (f41->query.has_reduced_reporting == 1 ||
 			f41->query.has_modal_control == 1 ||
 			f41->query.has_single_tap == 1 ||
 			f41->query.has_z == 1 ||
 			f41->query.has_serial_number == 1) {
-		f41->control.reg_0 = devm_kzalloc(&fn_dev->dev,
+		f41->control.reg_0 = devm_kzalloc(&fn->dev,
 				sizeof(union f41_ap_control_0),
 				GFP_KERNEL);
 		if (!f41->control.reg_0) {
-			dev_err(&fn_dev->dev, "Failed to allocate control register 0.");
+			dev_err(&fn->dev, "Failed to allocate control register 0.");
 			return -ENOMEM;
 		}
 		f41->control.reg_0->address = next_loc;
 		next_loc += sizeof(f41->control.reg_0->regs);
-		retval = rmi_read_block(fn_dev->rmi_dev,
+		retval = rmi_read_block(fn->rmi_dev,
 				f41->control.reg_0->address,
 				f41->control.reg_0->regs,
 				sizeof(f41->control.reg_0->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "Could not read Control register 0 from 0x%04x\n",
+			dev_err(&fn->dev, "Could not read Control register 0 from 0x%04x\n",
 					f41->control.reg_0->address);
 			return retval;
 		}
@@ -542,61 +542,61 @@ static int rmi_f41_initialize(struct rmi_function_dev *fn_dev)
 					f41->query.has_serial_number == 1;
 
 	if (f41->query.number_of_buttons > 0) {
-		f41->control.reg_1 = devm_kzalloc(&fn_dev->dev,
+		f41->control.reg_1 = devm_kzalloc(&fn->dev,
 					sizeof(union f41_ap_control_1),
 					GFP_KERNEL);
 		if (!f41->control.reg_1) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		f41->control.reg_1->address = next_loc;
 		next_loc += sizeof(f41->control.reg_1->regs);
-		retval = rmi_read_block(fn_dev->rmi_dev,
+		retval = rmi_read_block(fn->rmi_dev,
 				f41->control.reg_1->address,
 				f41->control.reg_1->regs,
 				sizeof(f41->control.reg_1->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "Could not read Control register 1 from 0x%04x\n",
+			dev_err(&fn->dev, "Could not read Control register 1 from 0x%04x\n",
 						f41->control.reg_1->address);
 			return retval;
 		}
 		f41->attrs_ctrl_regs_exist[f41_ctrl_reg_1] = true;
 	}
 
-	f41->control.reg_2__5 =	devm_kzalloc(&fn_dev->dev,
+	f41->control.reg_2__5 =	devm_kzalloc(&fn->dev,
 					sizeof(union f41_ap_control_2__5),
 					GFP_KERNEL);
 	if (!f41->control.reg_2__5) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers 2-5.");
+		dev_err(&fn->dev, "Failed to allocate control registers 2-5.");
 		return -ENOMEM;
 	}
 	f41->control.reg_2__5->address = next_loc;
 	next_loc += sizeof(f41->control.reg_2__5->regs);
-	retval = rmi_read_block(fn_dev->rmi_dev, f41->control.reg_2__5->address,
+	retval = rmi_read_block(fn->rmi_dev, f41->control.reg_2__5->address,
 				f41->control.reg_2__5->regs,
 				sizeof(f41->control.reg_2__5->regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read Control registers 2-5 from 0x%04x\n",
+		dev_err(&fn->dev, "Could not read Control registers 2-5 from 0x%04x\n",
 				f41->control.reg_2__5->address);
 		return retval;
 	}
 	f41->attrs_ctrl_regs_exist[f41_ctrl_reg_2__5] = true;
 
 	if (f41->query.has_reduced_reporting == 1) {
-		f41->control.reg_6__9 = devm_kzalloc(&fn_dev->dev,
+		f41->control.reg_6__9 = devm_kzalloc(&fn->dev,
 				sizeof(union f41_ap_control_6__9), GFP_KERNEL);
 		if (!f41->control.reg_6__9) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers 6-9.");
+			dev_err(&fn->dev, "Failed to allocate control registers 6-9.");
 			return -ENOMEM;
 		}
 		f41->control.reg_6__9->address = next_loc;
 		next_loc += sizeof(f41->control.reg_6__9->regs);
-		retval = rmi_read_block(fn_dev->rmi_dev,
+		retval = rmi_read_block(fn->rmi_dev,
 				f41->control.reg_6__9->address,
 				f41->control.reg_6__9->regs,
 				sizeof(f41->control.reg_6__9->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "Could not read Control registers 6-9 from 0x%04x\n",
+			dev_err(&fn->dev, "Could not read Control registers 6-9 from 0x%04x\n",
 						f41->control.reg_6__9->address);
 			return retval;
 		}
@@ -604,21 +604,21 @@ static int rmi_f41_initialize(struct rmi_function_dev *fn_dev)
 	}
 
 	if (f41->query.has_single_tap == 1) {
-		f41->control.reg_10 = devm_kzalloc(&fn_dev->dev,
+		f41->control.reg_10 = devm_kzalloc(&fn->dev,
 					sizeof(union f41_ap_control_10),
 					GFP_KERNEL);
 		if (!f41->control.reg_10) {
-			dev_err(&fn_dev->dev, "Failed to allocate control register 10.");
+			dev_err(&fn->dev, "Failed to allocate control register 10.");
 			return -ENOMEM;
 		}
 		f41->control.reg_10->address = next_loc;
 		next_loc += sizeof(f41->control.reg_10->regs);
-		retval = rmi_read_block(fn_dev->rmi_dev,
+		retval = rmi_read_block(fn->rmi_dev,
 					f41->control.reg_10->address,
 					f41->control.reg_10->regs,
 					sizeof(f41->control.reg_10->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "Could not read Control register 10 from 0x%04x\n",
+			dev_err(&fn->dev, "Could not read Control register 10 from 0x%04x\n",
 						f41->control.reg_10->address);
 			return retval;
 		}
@@ -628,7 +628,7 @@ static int rmi_f41_initialize(struct rmi_function_dev *fn_dev)
 
 	/* initialize data registers */
 
-	f41->data_block = devm_kzalloc(&fn_dev->dev,
+	f41->data_block = devm_kzalloc(&fn->dev,
 				       sizeof(union f41_ap_data_0__3)
 					+ sizeof(union f41_ap_data_4)
 					+ sizeof(union f41_ap_data_5)
@@ -639,7 +639,7 @@ static int rmi_f41_initialize(struct rmi_function_dev *fn_dev)
 					+ sizeof(union f41_ap_data_11__14),
 				GFP_KERNEL);
 	if (!f41->data_block) {
-		dev_err(&fn_dev->dev, "Failed to allocate data registers.");
+		dev_err(&fn->dev, "Failed to allocate data registers.");
 			return -ENOMEM;
 	}
 	data_loc = f41->data_block;
@@ -659,10 +659,10 @@ static int rmi_f41_initialize(struct rmi_function_dev *fn_dev)
 	/* data 5 */
 	/* button map */
 	/* call devm_kcalloc when it will be defined in the kernel */
-	f41->button_map = devm_kzalloc(&fn_dev->dev,
+	f41->button_map = devm_kzalloc(&fn->dev,
 		f41->query.number_of_buttons*sizeof(u16), GFP_KERNEL);
 	if (!f41->button_map) {
-		dev_err(&fn_dev->dev, "Failed to allocate button map.\n");
+		dev_err(&fn->dev, "Failed to allocate button map.\n");
 		return -ENOMEM;
 	}
 	if (f41->query.number_of_buttons > 0) {
@@ -672,14 +672,14 @@ static int rmi_f41_initialize(struct rmi_function_dev *fn_dev)
 	pdata = to_rmi_platform_data(rmi_dev);
 	if (pdata) {
 		if (!pdata->f41_button_map)
-			dev_warn(&fn_dev->dev, "button_map is NULL");
+			dev_warn(&fn->dev, "button_map is NULL");
 		else if (!pdata->f41_button_map->map)
-			dev_warn(&fn_dev->dev,
+			dev_warn(&fn->dev,
 				 "Platformdata button map is missing!\n");
 		else {
 			if (pdata->f41_button_map->nbuttons !=
 						f41->query.number_of_buttons)
-				dev_warn(&fn_dev->dev,
+				dev_warn(&fn->dev,
 					"Platformdata button map size (%d) != number of buttons on device (%d).\n",
 					pdata->f41_button_map->nbuttons,
 					f41->query.number_of_buttons);
@@ -739,22 +739,22 @@ static int rmi_f41_initialize(struct rmi_function_dev *fn_dev)
 }
 
 
-static int rmi_f41_create_sysfs(struct rmi_function_dev *fn_dev)
+static int rmi_f41_create_sysfs(struct rmi_function *fn)
 {
 	u8 attr_num;
-	struct rmi_fn_41_data *f41 = fn_dev->data;
-	dev_dbg(&fn_dev->dev, "Creating F41 sysfs files.");
+	struct rmi_fn_41_data *f41 = fn->data;
+	dev_dbg(&fn->dev, "Creating F41 sysfs files.");
 
 	/* Set up sysfs device attributes. */
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_query) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create query sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_query) < 0) {
+		dev_err(&fn->dev, "Failed to create query sysfs files.");
 		return -ENODEV;
 	}
 	for (attr_num = 0; attr_num < ARRAY_SIZE(attrs_ctrl); attr_num++) {
 		if (f41->attrs_ctrl_regs_exist[attr_num]) {
-			if (sysfs_create_group(&fn_dev->dev.kobj,
+			if (sysfs_create_group(&fn->dev.kobj,
 					&attrs_ctrl[attr_num]) < 0) {
-				dev_err(&fn_dev->dev, "Failed to create sysfs file group for reg group %d.",
+				dev_err(&fn->dev, "Failed to create sysfs file group for reg group %d.",
 								attr_num);
 				return -ENODEV;
 			}
@@ -762,9 +762,9 @@ static int rmi_f41_create_sysfs(struct rmi_function_dev *fn_dev)
 	}
 	for (attr_num = 0; attr_num < ARRAY_SIZE(attrs_data); attr_num++) {
 		if (f41->attrs_data_regs_exist[attr_num]) {
-			if (sysfs_create_group(&fn_dev->dev.kobj,
+			if (sysfs_create_group(&fn->dev.kobj,
 					&attrs_data[attr_num]) < 0) {
-				dev_err(&fn_dev->dev, "Failed to create sysfs file group for reg group %d.",
+				dev_err(&fn->dev, "Failed to create sysfs file group for reg group %d.",
 								attr_num);
 				return -ENODEV;
 			}
@@ -774,9 +774,9 @@ static int rmi_f41_create_sysfs(struct rmi_function_dev *fn_dev)
 }
 
 
-static int rmi_f41_config(struct rmi_function_dev *fn_dev)
+static int rmi_f41_config(struct rmi_function *fn)
 {
-	struct rmi_fn_41_data *f41 = fn_dev->data;
+	struct rmi_fn_41_data *f41 = fn->data;
 	int retval;
 	/* Write Control Register values back to device */
 	if (f41->attrs_ctrl_regs_exist[f41_ctrl_reg_0a]
@@ -784,58 +784,58 @@ static int rmi_f41_config(struct rmi_function_dev *fn_dev)
 		|| f41->attrs_ctrl_regs_exist[f41_ctrl_reg_0c]
 		|| f41->attrs_ctrl_regs_exist[f41_ctrl_reg_0d]
 		|| f41->attrs_ctrl_regs_exist[f41_ctrl_reg_0e]) {
-		retval = rmi_write_block(fn_dev->rmi_dev,
+		retval = rmi_write_block(fn->rmi_dev,
 					f41->control.reg_0->address,
 					(u8 *)f41->control.reg_0,
 					sizeof(f41->control.reg_0->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "%s : Could not write reg0 to 0x%x\n",
+			dev_err(&fn->dev, "%s : Could not write reg0 to 0x%x\n",
 					__func__, f41->control.reg_0->address);
 			return retval;
 		}
 	}
 	if (f41->attrs_ctrl_regs_exist[f41_ctrl_reg_1]) {
-		retval = rmi_write_block(fn_dev->rmi_dev,
+		retval = rmi_write_block(fn->rmi_dev,
 					f41->control.reg_1->address,
 					(u8 *)f41->control.reg_1,
 					sizeof(f41->control.reg_1->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "%s : Could not write reg1 to 0x%x\n",
+			dev_err(&fn->dev, "%s : Could not write reg1 to 0x%x\n",
 					__func__, f41->control.reg_1->address);
 			return retval;
 		}
 	}
 	if (f41->attrs_ctrl_regs_exist[f41_ctrl_reg_2__5]) {
-		retval = rmi_write_block(fn_dev->rmi_dev,
+		retval = rmi_write_block(fn->rmi_dev,
 					f41->control.reg_2__5->address,
 					(u8 *)f41->control.reg_2__5,
 					sizeof(f41->control.reg_2__5->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "%s : Could not write reg2_5 to 0x%x\n",
+			dev_err(&fn->dev, "%s : Could not write reg2_5 to 0x%x\n",
 					__func__,
 					f41->control.reg_2__5->address);
 			return retval;
 		}
 	}
 	if (f41->attrs_ctrl_regs_exist[f41_ctrl_reg_6__9]) {
-		retval = rmi_write_block(fn_dev->rmi_dev,
+		retval = rmi_write_block(fn->rmi_dev,
 					f41->control.reg_6__9->address,
 					(u8 *)f41->control.reg_6__9,
 					sizeof(f41->control.reg_6__9->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "%s : Could not write reg6_9 to 0x%x\n",
+			dev_err(&fn->dev, "%s : Could not write reg6_9 to 0x%x\n",
 					__func__,
 					f41->control.reg_6__9->address);
 			return retval;
 		}
 	}
 	if (f41->attrs_ctrl_regs_exist[f41_ctrl_reg_10]) {
-		retval = rmi_write_block(fn_dev->rmi_dev,
+		retval = rmi_write_block(fn->rmi_dev,
 					f41->control.reg_10->address,
 					(u8 *)f41->control.reg_10,
 					sizeof(f41->control.reg_10->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev, "%s : Could not write reg10 to 0x%x\n",
+			dev_err(&fn->dev, "%s : Could not write reg10 to 0x%x\n",
 					__func__, f41->control.reg_10->address);
 			return retval;
 		}
@@ -844,12 +844,12 @@ static int rmi_f41_config(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static int rmi_f41_remove(struct rmi_function_dev *fn_dev)
+static int rmi_f41_remove(struct rmi_function *fn)
 {
-	struct rmi_fn_41_data *f41 = fn_dev->data;
+	struct rmi_fn_41_data *f41 = fn->data;
 
 	input_unregister_device(f41->input);
-	rmi_f41_free_memory(fn_dev);
+	rmi_f41_free_memory(fn);
 
 	return 0;
 }
@@ -901,17 +901,17 @@ simple_show_union_struct_unsigned2(data, reg_9, z_position)
 simple_show_union_struct_unsigned2(data, reg_10, battery_level)
 simple_show_union_struct_unsigned2(data, reg_11__14, pen_serial_number)
 
-static int rmi_f41_register_device(struct rmi_function_dev *fn_dev)
+static int rmi_f41_register_device(struct rmi_function *fn)
 {
 	int i;
 	int rc;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_fn_41_data *f41 = fn_dev->data;
-	struct rmi_driver *driver = fn_dev->rmi_dev->driver;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_fn_41_data *f41 = fn->data;
+	struct rmi_driver *driver = fn->rmi_dev->driver;
 	struct input_dev *input_dev = input_allocate_device();
 
 	if (!input_dev) {
-		dev_err(&fn_dev->dev, "Failed to allocate input device.\n");
+		dev_err(&fn->dev, "Failed to allocate input device.\n");
 		return -ENOMEM;
 	}
 
@@ -919,12 +919,12 @@ static int rmi_f41_register_device(struct rmi_function_dev *fn_dev)
 	if (driver->set_input_params) {
 		rc = driver->set_input_params(rmi_dev, input_dev);
 		if (rc < 0) {
-			dev_err(&fn_dev->dev, "%s: Error in setting input device.\n",
+			dev_err(&fn->dev, "%s: Error in setting input device.\n",
 			__func__);
 			goto error_free_device;
 		}
 	}
-	sprintf(f41->input_phys, "%s/input0", dev_name(&fn_dev->dev));
+	sprintf(f41->input_phys, "%s/input0", dev_name(&fn->dev));
 	input_dev->phys = f41->input_phys;
 	input_dev->dev.parent = &rmi_dev->dev;
 	input_set_drvdata(input_dev, f41);
@@ -937,7 +937,7 @@ static int rmi_f41_register_device(struct rmi_function_dev *fn_dev)
 		set_bit(f41->button_map[i], input_dev->keybit);
 	rc = input_register_device(input_dev);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "Failed to register input device.\n");
+		dev_err(&fn->dev, "Failed to register input device.\n");
 		goto error_free_device;
 	}
 
@@ -949,20 +949,20 @@ error_free_device:
 	return rc;
 }
 
-static int rmi_f41_attention(struct rmi_function_dev *fn_dev,
+static int rmi_f41_attention(struct rmi_function *fn,
 						unsigned long *irq_bits)
 {
 	int error;
 	int button;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_fn_41_data *f41 = fn_dev->data;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_fn_41_data *f41 = fn->data;
 
 
 	/* Read all the data registers. */
-	error = rmi_read_block(rmi_dev, fn_dev->fd.data_base_addr,
+	error = rmi_read_block(rmi_dev, fn->fd.data_base_addr,
 			       f41->data_block, f41->data_block_size);
 	if (error < 0) {
-		dev_err(&fn_dev->dev, "Failed to read data registers.\n");
+		dev_err(&fn->dev, "Failed to read data registers.\n");
 		return error;
 	}
 
@@ -981,28 +981,28 @@ static int rmi_f41_attention(struct rmi_function_dev *fn_dev,
 	return 0;
 }
 
-static int rmi_f41_probe(struct rmi_function_dev *fn_dev)
+static int rmi_f41_probe(struct rmi_function *fn)
 {
 	int retval = 0;
 
-	dev_dbg(&fn_dev->dev, "Intializing F41.");
+	dev_dbg(&fn->dev, "Intializing F41.");
 
-	retval = rmi_f41_initialize(fn_dev);
+	retval = rmi_f41_initialize(fn);
 	if (retval < 0)
 		goto error_exit;
 
-	retval = rmi_f41_register_device(fn_dev);
+	retval = rmi_f41_register_device(fn);
 	if (retval < 0)
 		goto error_exit;
 
-	retval = rmi_f41_create_sysfs(fn_dev);
+	retval = rmi_f41_create_sysfs(fn);
 	if (retval < 0)
 		goto error_exit;
 
 	return retval;
 
 error_exit:
-	rmi_f41_free_memory(fn_dev);
+	rmi_f41_free_memory(fn);
 
 	return retval;
 }

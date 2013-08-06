@@ -15,7 +15,6 @@
 #include <linux/slab.h>
 #include <linux/gpio.h>
 #include <linux/leds.h>
-#include <linux/io.h>
 #include "rmi_driver.h"
 
 #define MAX_LEN 256
@@ -175,7 +174,7 @@ struct f30_control {
 
 struct f30_data_0n {
 //	u8 gpi_led_data:1;
-	u8 gpi_led_data:3; // ??
+	u8 gpi_led_data:3;
 };
 
 struct f30_data_0 {
@@ -266,11 +265,11 @@ show_store_union_struct_prototype(suppress)
 static void rmi_f30_gpio_data_set(struct gpio_chip *gc, unsigned nr, int val)
 {
 	int reg_val = 32;
-	struct rmi_function_dev *fn_dev = container_of(gc,
+	struct rmi_function *fn = container_of(gc,
 						struct rmi_fn_30_data, gpio);
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
 	//struct input_dev *input_dev;
-	struct rmi_fn_30_data *f30 = fn_dev->data;
+	struct rmi_fn_30_data *f30 = fn->data;
 	int gpio_led_cnt = f30->query.gpio_led_count;
 	int bytecnt = gpio_led_cnt / 7 + 1;
 	//int regs_size = 0;
@@ -280,7 +279,7 @@ static void rmi_f30_gpio_data_set(struct gpio_chip *gc, unsigned nr, int val)
 	rc = rmi_read_block(rmi_dev, f30->data.datareg_0->address,
 				(u8 *)reg_val, bytecnt);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev,
+		dev_err(&fn->dev,
 		"Could not read query registers from 0x%04x\n",
 		f30->data.datareg_0->address);
 		mutex_unlock(&f30->gpio_mutex);
@@ -296,7 +295,7 @@ static void rmi_f30_gpio_data_set(struct gpio_chip *gc, unsigned nr, int val)
 	rc = rmi_write_block(rmi_dev, f30->data.datareg_0->address,
 				(u8 *)reg_val, bytecnt);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not read control 0 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not read control 0 to 0x%x\n",
 				__func__, rc, f30->control.reg_0->address);
 	}
 
@@ -305,10 +304,10 @@ static void rmi_f30_gpio_data_set(struct gpio_chip *gc, unsigned nr, int val)
 
 static int rmi_f30_gpio_data_get(struct gpio_chip *gc, unsigned nr)
 {
-	struct rmi_function_dev *fn_dev = container_of(gc,
+	struct rmi_function *fn = container_of(gc,
 						struct rmi_fn_30_data, gpio);
-	struct rmi_fn_30_data *f30 = fn_dev->data;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
+	struct rmi_fn_30_data *f30 = fn->data;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
 	int gpio_led_cnt = f30->query.gpio_led_count;
 	int bytecnt = gpio_led_cnt / 7 + 1;
 	int gpio_offset = (nr + 7) / 8;
@@ -329,11 +328,11 @@ static int rmi_f30_gpio_data_direction_in(struct gpio_chip *gc,
 //followed by writing 1 to DataN to force pull up
 //nneds to check data setting accuracy.
 
-	struct rmi_function_dev *fn_dev = container_of(gc,
+	struct rmi_function *fn = container_of(gc,
 						struct rmi_fn_30_data, gpio);
-	struct rmi_fn_30_data *f30 = fn_dev->data;
+	struct rmi_fn_30_data *f30 = fn->data;
 	struct f30_control *control = &f30->control;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
 	f30->gpioled_count = f30->query.gpio_led_count;
 	u8 reg = sizeof(u8)*(f30->gpioled_count + 7) / 8;
 	u8 mask = 1 << (gpio_num % 8);
@@ -357,9 +356,9 @@ static int rmi_f30_gpio_data_direction_out(struct gpio_chip *gc,
 {
 	// When switching a pin's direction from input to output,
 	// write DataN followed by DirN(1).
-	struct rmi_function_dev *fn_dev = container_of(gc,
+	struct rmi_function *fn = container_of(gc,
 						struct rmi_fn_30_data, gpio);
-	struct rmi_fn_30_data *f30 = fn_dev->data;
+	struct rmi_fn_30_data *f30 = fn->data;
 	struct f30_control *control = &f30->control;
 	u8 curr_dirs;
 	unsigned short bit;
@@ -391,7 +390,6 @@ static struct gpio_chip rmi_f30_gpio_data_core = {
 	.set			= rmi_f30_gpio_data_set,
 };
 #endif
-
 
 static struct attribute *attrs_ctrl_reg_0[] = {
 	attrify(led_sel),
@@ -593,66 +591,64 @@ int rmi_f30_read_control_parameters(struct rmi_device *rmi_dev,
 	return 0;
 }
 
-static inline int rmi_f30_alloc_memory(struct rmi_function_dev *fn_dev)
+static inline int rmi_f30_alloc_memory(struct rmi_function *fn)
 {
 	struct rmi_fn_30_data *f30;
 	int retval;
 
-	f30 = devm_kzalloc(&fn_dev->dev, sizeof(struct rmi_fn_30_data),
+	f30 = devm_kzalloc(&fn->dev, sizeof(struct rmi_fn_30_data),
 			   GFP_KERNEL);
 	if (!f30) {
-		dev_err(&fn_dev->dev, "Failed to allocate rmi_fn_30_data.\n");
+		dev_err(&fn->dev, "Failed to allocate rmi_fn_30_data.\n");
 		return -ENOMEM;
 	}
-	fn_dev->data = f30;
+	fn->data = f30;
 
-	retval = rmi_read_block(fn_dev->rmi_dev,
-						fn_dev->fd.query_base_addr,
+	retval = rmi_read_block(fn->rmi_dev,
+						fn->fd.query_base_addr,
 						f30->query.regs,
 					ARRAY_SIZE(f30->query.regs));
 
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Failed to read query register.\n");
+		dev_err(&fn->dev, "Failed to read query register.\n");
 		return retval;
 	}
 
 	f30->gpioled_count = f30->query.gpio_led_count;
 	f30->button_bitmask_size = sizeof(u8)*(f30->gpioled_count + 7) / 8;
 	f30->button_data_buffer =
-	    devm_kzalloc(&fn_dev->dev, f30->button_bitmask_size, GFP_KERNEL);
+	    devm_kzalloc(&fn->dev, f30->button_bitmask_size, GFP_KERNEL);
 	if (!f30->button_data_buffer) {
-		dev_err(&fn_dev->dev, "Failed to allocate button data buffer.\n");
+		dev_err(&fn->dev, "Failed to allocate button data buffer.\n");
 		return -ENOMEM;
 	}
 
-	f30->gpioled_map = devm_kzalloc(&fn_dev->dev,
+	f30->gpioled_map = devm_kzalloc(&fn->dev,
 		f30->gpioled_count*sizeof(u16), GFP_KERNEL);
 	if (!f30->gpioled_map) {
-		dev_err(&fn_dev->dev, "Failed to allocate button map.\n");
+		dev_err(&fn->dev, "Failed to allocate button map.\n");
 		return -ENOMEM;
 	}
 	return 0;
 }
 
-static inline void rmi_f30_free_memory(struct rmi_function_dev *fn_dev)
+static inline void rmi_f30_free_memory(struct rmi_function *fn)
 {
 	u8 reg_num = 0;
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_query);
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_data);
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_suppress_grp);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_query);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_data);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_suppress_grp);
 	for (reg_num = 0; reg_num < ARRAY_SIZE(attrs_ctrl_regs); reg_num++)
-		sysfs_remove_group(&fn_dev->dev.kobj,
+		sysfs_remove_group(&fn->dev.kobj,
 				   &attrs_ctrl_regs[reg_num]);
 }
 
-int rmi_f30_attention(struct rmi_function_dev *fn_dev,
+int rmi_f30_attention(struct rmi_function *fn,
 					unsigned long *irq_bits)
 {
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	int data_base_addr = fn_dev->fd.data_base_addr;
-	struct rmi_fn_30_data *f30 = fn_dev->data;
-	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
-	struct input_dev *input_dev = driver_data->input;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	int data_base_addr = fn->fd.data_base_addr;
+	struct rmi_fn_30_data *f30 = fn->data;
 	int error;
 	int gpiled;
 	bool gpiled_status = false;
@@ -662,16 +658,15 @@ int rmi_f30_attention(struct rmi_function_dev *fn_dev,
 		return 0;
 
 	/* Read the button data. */
-
-	if (rmi_dev->phys->attn_data) {
-		memcpy(f30->button_data_buffer, rmi_dev->phys->attn_data,
+	if (rmi_dev->xport->attn_data) {
+		memcpy(f30->button_data_buffer, rmi_dev->xport->attn_data,
 			f30->button_bitmask_size);
 	} else {
 		error = rmi_read_block(rmi_dev, data_base_addr,
 				f30->button_data_buffer,
 				f30->button_bitmask_size);
 		if (error < 0) {
-			dev_err(&fn_dev->dev,
+			dev_err(&fn->dev,
 				"%s: Failed to read button data registers.\n",
 				__func__);
 			return error;
@@ -679,31 +674,28 @@ int rmi_f30_attention(struct rmi_function_dev *fn_dev,
 	}
 
 	/* Read the gpi led data. */
-	f30->data.address = fn_dev->fd.data_base_addr;
-	if (rmi_dev->phys->attn_data) {
-		 memcpy((u8 *)f30->data.datareg_0->regs, rmi_dev->phys->attn_data,
-		 	1);
-		++rmi_dev->phys->attn_data;
-		--rmi_dev->phys->attn_size;
+	f30->data.address = fn->fd.data_base_addr;
+	if (rmi_dev->xport->attn_data) {
+		memcpy((u8 *)f30->data.datareg_0->regs, rmi_dev->xport->attn_data,
+			1);
+		++rmi_dev->xport->attn_data;
+		--rmi_dev->xport->attn_size;
 	} else {
-		error = rmi_read_block(fn_dev->rmi_dev, f30->data.address,
-			(u8 *)&f30->data, f30->gpioled_count);
+		error = rmi_read_block(fn->rmi_dev, f30->data.address,
+				(u8 *)&f30->data, f30->gpioled_count);
 
 		if (error < 0) {
-			dev_err(&fn_dev->dev, "%s: Failed to read f30 data registers.\n",
+			dev_err(&fn->dev, "%s: Failed to read f30 data registers.\n",
 				__func__);
 			return error;
 		}
 	}
-
 	/* Generate events for buttons that change state. */
-	/* Also, firmware may report more gpiled's then there
-	 * are registers */
-	for (gpiled = 0; gpiled < f30->gpioled_count 
-		|| gpiled <= f30->control.reg_2->length; gpiled++)
+	for (gpiled = 0; gpiled < f30->gpioled_count
+		&& gpiled < f30->control.reg_2->length; gpiled++)
 	{
 		status = f30->data.datareg_0->regs[gpiled].gpi_led_data;
-		dev_dbg(&fn_dev->dev,
+		dev_warn(&fn->dev,
 			"rmi_f30 attention gpiled=%d data status=%d\n",
 			gpiled,
 			f30->data.datareg_0->regs[gpiled].gpi_led_data);
@@ -712,38 +704,59 @@ int rmi_f30_attention(struct rmi_function_dev *fn_dev,
 			if (f30->control.reg_2->regs[gpiled].dir != 0) {
 				gpiled_status = status == 0;
 
-				/* if the gpiled data state changed from the
-				* last time report it and store the new state */
-				/* Generate an event here. */
-				dev_dbg(&fn_dev->dev,
+				/*
+				 * if the gpiled data state changed from the
+				 * last time report it and store the new state
+				 * Generate an event here. 
+				 */
+				dev_dbg(&fn->dev,
 					"rmi_f30 attention call input_report_key\n");
-				input_report_key(input_dev,
+				input_report_key(f30->input,
 					f30->gpioled_map[gpiled], gpiled_status);
 			}
 		}
 	}
-	input_sync(input_dev); /* sync after groups of events */
+
+	input_sync(f30->input);
+
 	return 0;
 }
 
-static int rmi_f30_register_device(struct rmi_function_dev *fn_dev)
+static int rmi_f30_register_device(struct rmi_function *fn)
 {
 	int i;
 	int rc;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_fn_30_data *f30 = fn_dev->data;
-	struct rmi_driver *driver = fn_dev->rmi_dev->driver;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_fn_30_data *f30 = fn->data;
 	struct rmi_driver_data *driver_data = dev_get_drvdata(&rmi_dev->dev);
-	struct input_dev *input_dev = driver_data->input;
+	struct input_dev *input_dev;
+
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
+	input_dev = input_allocate_device();
+	if (!input_dev) {
+		dev_err(&fn->dev, "Failed to allocate input device.\n");
+		return -ENOMEM;
+	}
 
 	if (driver->set_input_params) {
 		rc = driver->set_input_params(rmi_dev, input_dev);
 		if (rc < 0) {
-			dev_err(&fn_dev->dev, "%s: Error in setting input device.\n",
+			dev_err(&fn->dev, "%s: Error in setting input device.\n",
 			__func__);
 			goto error_free_device;
 		}
 	}
+
+	sprintf(f30->input_phys, "%s/input0", dev_name(&fn->dev));
+	input_dev->phys = f30->input_phys;
+	input_dev->dev.parent = &rmi_dev->dev;
+	input_set_drvdata(input_dev, f30);
+	set_bit(EV_SYN, input_dev->evbit);
+#else
+	input_dev = driver_data->input;
+#endif
+
+	f30->input = input_dev;
 
 	/* Set up any input events. */
 	set_bit(EV_KEY, input_dev->evbit);
@@ -756,15 +769,26 @@ static int rmi_f30_register_device(struct rmi_function_dev *fn_dev)
 		input_set_capability(input_dev, EV_KEY, f30->gpioled_map[i]);
 	}
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
+	rc = input_register_device(input_dev);
+	if (rc < 0) {
+		dev_err(&fn->dev, "Failed to register input device.\n");
+		goto error_free_device;
+	}
+#endif
 	return 0;
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
 error_free_device:
+	input_free_device(input_dev);
+#endif
+
 	return rc;
 }
 
-static int rmi_f30_config(struct rmi_function_dev *fn_dev)
+static int rmi_f30_config(struct rmi_function *fn)
 {
-	struct rmi_fn_30_data *data = fn_dev->data;
+	struct rmi_fn_30_data *data = fn->data;
 	int gpio_led_cnt = data->query.gpio_led_count;
 	int bytecnt = gpio_led_cnt / 7 + 1;
 	int regs_size = 0;
@@ -772,100 +796,100 @@ static int rmi_f30_config(struct rmi_function_dev *fn_dev)
 	/* repeated register functions */
 
 	/* Write Control Register values back to device */
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_0->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_0->address,
 				(u8 *)data->control.reg_0,
 				bytecnt * sizeof(struct f30_gpio_ctrl_0n));
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 0 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 0 to 0x%x\n",
 				__func__, rc, data->control.reg_0->address);
 		return rc;
 	}
 
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_1->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_1->address,
 			(u8 *) data->control.reg_1->regs,
 			sizeof(union f30_gpio_ctrl_1));
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 1 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 1 to 0x%x\n",
 				__func__, rc, data->control.reg_1->address);
 		return rc;
 	}
 
 	regs_size = data->control.reg_2->length;
 
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_2->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_2->address,
 			(u8 *) data->control.reg_2->regs,
 			regs_size);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 2 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 2 to 0x%x\n",
 				__func__, rc, data->control.reg_2->address);
 		return rc;
 	}
 
 	regs_size = data->control.reg_3->length;
 
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_3->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_3->address,
 			(u8 *) data->control.reg_3->regs,
 			regs_size);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 3 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 3 to 0x%x\n",
 				__func__, rc, data->control.reg_3->address);
 		return rc;
 	}
 
 	regs_size = data->control.reg_4->length;
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_4->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_4->address,
 			(u8 *) data->control.reg_4->regs,
 			regs_size);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 4 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 4 to 0x%x\n",
 				__func__, rc, data->control.reg_4->address);
 		return rc;
 	}
 
 	regs_size = data->control.reg_5->length;
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_5->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_5->address,
 			(u8 *) data->control.reg_5->regs,
 			regs_size);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 5 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 5 to 0x%x\n",
 				__func__, rc, data->control.reg_5->address);
 		return rc;
 	}
 
 	regs_size = data->control.reg_6->length;
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_6->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_6->address,
 			(u8 *) data->control.reg_6->regs,
 			regs_size);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 6 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 6 to 0x%x\n",
 				__func__, rc, data->control.reg_6->address);
 		return rc;
 	}
 
 	regs_size = data->control.reg_7->length;
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_7->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_7->address,
 			(u8 *) data->control.reg_7->regs,
 			regs_size);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 7 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 7 to 0x%x\n",
 			__func__, rc, data->control.reg_7->address);
 		return rc;
 	}
 
 	regs_size = data->control.reg_8->length;
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_8->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_8->address,
 			(u8 *) data->control.reg_8->regs, regs_size);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 9 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 9 to 0x%x\n",
 			__func__, rc, data->control.reg_8->address);
 		return rc;
 	}
 
-	rc = rmi_write_block(fn_dev->rmi_dev, data->control.reg_9->address,
+	rc = rmi_write_block(fn->rmi_dev, data->control.reg_9->address,
 			(u8 *) data->control.reg_9->regs,
 			sizeof(union f30_gpio_ctrl_9));
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "%s error %d: Could not write control 9 to 0x%x\n",
+		dev_err(&fn->dev, "%s error %d: Could not write control 9 to 0x%x\n",
 				__func__, rc, data->control.reg_9->address);
 		return rc;
 	}
@@ -873,11 +897,11 @@ static int rmi_f30_config(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
+static inline int rmi_f30_initialize(struct rmi_function *fn)
 {
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_device_platform_data *pdata;
-	struct rmi_fn_30_data *instance_data = fn_dev->data;
+	struct rmi_fn_30_data *instance_data = fn->data;
 
 	int retval = 0;
 	u16 next_loc;
@@ -889,11 +913,11 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	struct f30_control *control = &instance_data->control;
 
 	/* Read F30 Query Data */
-	instance_data->query.address = fn_dev->fd.query_base_addr;
-	retval = rmi_read_block(fn_dev->rmi_dev, instance_data->query.address,
+	instance_data->query.address = fn->fd.query_base_addr;
+	retval = rmi_read_block(fn->rmi_dev, instance_data->query.address,
 		(u8 *)&instance_data->query, sizeof(instance_data->query));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev,
+		dev_err(&fn->dev,
 		"Could not read query registers from 0x%04x\n",
 		instance_data->query.address);
 		return retval;
@@ -909,14 +933,14 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	pdata = to_rmi_platform_data(rmi_dev);
 	if (pdata) {
 		if (!pdata->gpioled_map) {
-			dev_warn(&fn_dev->dev,
+			dev_warn(&fn->dev,
 			"%s - gpioled_map is NULL", __func__);
 		} else if (pdata->gpioled_map->ngpioleds != gpio_led_cnt) {
-			dev_warn(&fn_dev->dev,
+			dev_warn(&fn->dev,
 				"Platformdata gpioled map size (%d) != number of buttons on device (%d) - ignored\n",
 				pdata->gpioled_map->ngpioleds, gpio_led_cnt);
 		} else if (!pdata->gpioled_map->map) {
-			dev_warn(&fn_dev->dev,
+			dev_warn(&fn->dev,
 				 "Platformdata button map is missing!\n");
 		} else {
 			int i;
@@ -928,7 +952,7 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 
 	/* Initialize Control Data */
 
-	next_loc = fn_dev->fd.control_base_addr;
+	next_loc = fn->fd.control_base_addr;
 
 	/* calculate reg size */
 
@@ -936,10 +960,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	instance_data->gpioled_byte_size = sizeof(u8)*gpio_led_cnt;
 
 	/* reg_0 */
-	control->reg_0 = devm_kzalloc(&fn_dev->dev,
+	control->reg_0 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_gpio_ctrl_0), GFP_KERNEL);
 	if (!control->reg_0) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 
@@ -947,13 +971,13 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 		reg_flg = 1;
 
 	f30_attrs_regs_exist[reg_num] = true;
-	regs_size = max((int)(sizeof(struct f30_gpio_ctrl_0n) * reg_flg *
-					instance_data->gpioled_bitmask_size), 1);
-	control->reg_0->regs = devm_kzalloc(&fn_dev->dev, regs_size,
+	regs_size = max((int)sizeof(struct f30_gpio_ctrl_0n) * reg_flg *
+					instance_data->gpioled_bitmask_size, 1);
+	control->reg_0->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
 
 	if (!control->reg_0->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_0->address = next_loc;
@@ -962,10 +986,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	reg_num++;
 
 	/* reg_1 */
-	control->reg_1 = devm_kzalloc(&fn_dev->dev,
+	control->reg_1 = devm_kzalloc(&fn->dev,
 				sizeof(union f30_gpio_ctrl_1), GFP_KERNEL);
 	if (!control->reg_1) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f30_attrs_regs_exist[reg_num] = true;
@@ -974,22 +998,22 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	next_loc += regs_size;
 
 	/* reg_2 */
-	instance_data->control.reg_2 = devm_kzalloc(&fn_dev->dev,
+	instance_data->control.reg_2 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_gpio_ctrl_2), GFP_KERNEL);
 	if (!control->reg_2) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 
 	reg_flg = hasgpio;
 	f30_attrs_regs_exist[reg_num] = true;
-	regs_size = max((int)(sizeof(struct f30_gpio_ctrl_2n)*reg_flg*
-					instance_data->gpioled_bitmask_size), 1);
-	control->reg_2->regs = devm_kzalloc(&fn_dev->dev, regs_size,
+	regs_size = max((int)sizeof(struct f30_gpio_ctrl_2n)*reg_flg*
+					instance_data->gpioled_bitmask_size, 1);
+	control->reg_2->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
 
 	if (!control->reg_2->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_2->address = next_loc;
@@ -998,22 +1022,22 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	reg_num++;
 
 	/* reg_3 */
-	instance_data->control.reg_3 = devm_kzalloc(&fn_dev->dev,
+	instance_data->control.reg_3 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_gpio_ctrl_3), GFP_KERNEL);
 	if (!control->reg_3) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 
 	reg_flg = hasgpio;
 	f30_attrs_regs_exist[reg_num] = true;
-	regs_size = max((int)(sizeof(struct f30_gpio_ctrl_3n) * reg_flg *
-					instance_data->gpioled_bitmask_size), 1);
-	control->reg_3->regs = devm_kzalloc(&fn_dev->dev, regs_size,
+	regs_size = max((int)sizeof(struct f30_gpio_ctrl_3n) * reg_flg *
+					instance_data->gpioled_bitmask_size, 1);
+	control->reg_3->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
 
 	if (!control->reg_3->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_3->address = next_loc;
@@ -1022,10 +1046,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	reg_num++;
 
 	/* reg_4 */
-	control->reg_4 = devm_kzalloc(&fn_dev->dev,
+	control->reg_4 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_gpio_ctrl_4), GFP_KERNEL);
 	if (!control->reg_4) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 
@@ -1034,10 +1058,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	regs_size = max(sizeof(struct f30_gpio_ctrl_4n)*reg_flg*
 					instance_data->gpioled_bitmask_size,
 					sizeof(struct f30_gpio_ctrl_4n));
-	control->reg_4->regs = devm_kzalloc(&fn_dev->dev, regs_size,
+	control->reg_4->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
 	if (!control->reg_4->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_4->address = next_loc;
@@ -1046,20 +1070,20 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	reg_num++;
 
 	/* reg_5 */
-	control->reg_5 = devm_kzalloc(&fn_dev->dev,
+	control->reg_5 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_gpio_ctrl_5), GFP_KERNEL);
 	if (!control->reg_5) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 
 	reg_flg = hasled;
 	f30_attrs_regs_exist[reg_num] = true;
 	regs_size = max(6 * reg_flg, 2);
-	control->reg_5->regs = devm_kzalloc(&fn_dev->dev, regs_size,
+	control->reg_5->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
 	if (!control->reg_5->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_5->address = next_loc;
@@ -1068,10 +1092,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	reg_num++;
 
 	/* reg_6 */
-	control->reg_6 = devm_kzalloc(&fn_dev->dev,
+	control->reg_6 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_gpio_ctrl_6), GFP_KERNEL);
 	if (!control->reg_6) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	reg_flg = hasled || (!hasled
@@ -1089,10 +1113,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 
 	reg_num++;
 
-	control->reg_6->regs = devm_kzalloc(&fn_dev->dev, regs_size,
+	control->reg_6->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
 	if (!control->reg_6->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_6->address = next_loc;
@@ -1101,10 +1125,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 
 	/* reg_7 */
 	reg_flg = hasmbtn;
-	control->reg_7 = devm_kzalloc(&fn_dev->dev,
+	control->reg_7 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_gpio_ctrl_7), GFP_KERNEL);
 	if (!control->reg_7) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	if (hasmbtn)
@@ -1116,10 +1140,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 					gpio_led_cnt,
 					sizeof(struct f30_gpio_ctrl_7n));
 	f30_attrs_regs_exist[reg_num] = true;
-	control->reg_7->regs = devm_kzalloc(&fn_dev->dev, regs_size,
+	control->reg_7->regs = devm_kzalloc(&fn->dev, regs_size,
 					    GFP_KERNEL);
 	if (!control->reg_7->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_7->address = next_loc;
@@ -1128,10 +1152,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	reg_num++;
 
 	/* reg_8 */
-	control->reg_8 = devm_kzalloc(&fn_dev->dev,
+	control->reg_8 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_gpio_ctrl_8), GFP_KERNEL);
 	if (!control->reg_8) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 
@@ -1140,9 +1164,9 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 					sizeof(struct f30_gpio_ctrl_8n));
 	f30_attrs_regs_exist[reg_num] = true;
 	control->reg_8->regs =
-			devm_kzalloc(&fn_dev->dev, regs_size, GFP_KERNEL);
+			devm_kzalloc(&fn->dev, regs_size, GFP_KERNEL);
 	if (!control->reg_8->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_8->address = next_loc;
@@ -1151,10 +1175,10 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	reg_num++;
 
 	/* reg_9 */
-	control->reg_9 = devm_kzalloc(&fn_dev->dev,
+	control->reg_9 = devm_kzalloc(&fn->dev,
 				sizeof(union f30_gpio_ctrl_9), GFP_KERNEL);
 	if (!control->reg_9) {
-		dev_err(&fn_dev->dev, "Failed to allocate control register.");
+		dev_err(&fn->dev, "Failed to allocate control register.");
 		return -ENOMEM;
 	}
 	if (instance_data->query.has_haptic)
@@ -1163,30 +1187,28 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	next_loc += sizeof(control->reg_9->regs);
 
 	/* data reg_0 */
-	instance_data->data.datareg_0 = devm_kzalloc(&fn_dev->dev,
+	instance_data->data.datareg_0 = devm_kzalloc(&fn->dev,
 				sizeof(struct f30_data_0), GFP_KERNEL);
 	if (!instance_data->data.datareg_0) {
-		dev_err(&fn_dev->dev, "Failed to allocate control register.");
+		dev_err(&fn->dev, "Failed to allocate control register.");
 		return -ENOMEM;
 	}
 
 	regs_size = sizeof(struct f30_data_0n)*
 				instance_data->gpioled_byte_size;
-	instance_data->data.datareg_0->address = fn_dev->fd.data_base_addr;
-
-	instance_data->data.datareg_0->regs =
-			devm_kzalloc(&fn_dev->dev, regs_size, GFP_KERNEL);
+	instance_data->data.datareg_0->address = fn->fd.data_base_addr;
+	instance_data->data.datareg_0->regs = devm_kzalloc(&fn->dev, regs_size,
+						GFP_KERNEL);
 	if (!instance_data->data.datareg_0->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate data registers.");
+		dev_err(&fn->dev, "Failed to allocate data registers.");
 		return -ENOMEM;
 	}
 
-	instance_data->data.datareg_0->length = regs_size;
 	next_loc += sizeof(instance_data->data.datareg_0->regs);
 
 	retval = rmi_f30_read_control_parameters(rmi_dev, instance_data);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev,
+		dev_err(&fn->dev,
 			"Failed to initialize F19 control params.\n");
 		return retval;
 	}
@@ -1196,32 +1218,33 @@ static inline int rmi_f30_initialize(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static int rmi_f30_create_sysfs(struct rmi_function_dev *fn_dev)
+static int rmi_f30_create_sysfs(struct rmi_function *fn)
 {
 	u8 reg_num;
 
-	dev_dbg(&fn_dev->dev, "Creating sysfs files.");
+	dev_dbg(&fn->dev, "Creating sysfs files.");
 
 	/* Set up sysfs device attributes. */
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_query) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create query sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_query) < 0) {
+		dev_err(&fn->dev, "Failed to create query sysfs files.");
 		return -ENODEV;
 	}
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_data) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create data sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_data) < 0) {
+		dev_err(&fn->dev, "Failed to create data sysfs files.");
 		return -ENODEV;
 	}
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_suppress_grp) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create suppress sysfs file.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_suppress_grp) < 0) {
+		dev_err(&fn->dev, "Failed to create suppress sysfs file.");
 		return -ENODEV;
 	}
 
 	for (reg_num = 0; reg_num < ARRAY_SIZE(attrs_ctrl_regs);
-		reg_num++) {
+		reg_num++)
+	{
 		if (f30_attrs_regs_exist[reg_num]) {
-			if (sysfs_create_group(&fn_dev->dev.kobj,
+			if (sysfs_create_group(&fn->dev.kobj,
 					&attrs_ctrl_regs[reg_num]) < 0) {
-				dev_err(&fn_dev->dev, "Failed to create sysfs file group for reg group %d.",
+				dev_err(&fn->dev, "Failed to create sysfs file group for reg group %d.",
 					reg_num);
 				return -ENODEV;
 			}
@@ -1232,38 +1255,50 @@ static int rmi_f30_create_sysfs(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static int rmi_f30_probe(struct rmi_function_dev *fn_dev)
+static int rmi_f30_probe(struct rmi_function *fn)
 {
 	int rc;
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
+	struct rmi_fn_30_data *f30 = fn->data;
+#endif
 
-	rc = rmi_f30_alloc_memory(fn_dev);
+	rc = rmi_f30_alloc_memory(fn);
 	if (rc < 0)
 		goto error_exit;
 
-	rc = rmi_f30_initialize(fn_dev);
+	rc = rmi_f30_initialize(fn);
 	if (rc < 0)
 		goto error_exit;
 
-	rc = rmi_f30_register_device(fn_dev);
+	rc = rmi_f30_register_device(fn);
 	if (rc < 0)
 		goto error_exit;
 
-	rc = rmi_f30_create_sysfs(fn_dev);
+	rc = rmi_f30_create_sysfs(fn);
 	if (rc < 0)
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
+		goto error_uregister_exit;
+#else
 		goto error_exit;
+#endif
 	return 0;
 
+#ifdef RMI4_FUNCTION_SPECIFIC_INPUT_DEVICE
+error_uregister_exit:
+	input_unregister_device(f30->input);
+#endif
+
 error_exit:
-	rmi_f30_free_memory(fn_dev);
+	rmi_f30_free_memory(fn);
 
 	return rc;
 
 }
 
-static int rmi_f30_remove(struct rmi_function_dev *fn_dev)
+static int rmi_f30_remove(struct rmi_function *fn)
 {
-	rmi_f30_free_memory(fn_dev);
-	return 0;
+        rmi_f30_free_memory(fn);
+        return 0;
 }
 
 static struct rmi_function_driver function_driver = {
@@ -1278,46 +1313,45 @@ static struct rmi_function_driver function_driver = {
 };
 
 static ssize_t rmi_fn_30_suppress_show(struct device *dev, struct device_attribute *attr,
-					 char *buf)
+                                         char *buf)
 {
-	struct rmi_function_dev *fn_dev;
-	struct rmi_fn_30_data *f30;
+        struct rmi_function *fn;
+        struct rmi_fn_30_data *f30;
 
-	fn_dev = to_rmi_function_dev(dev);
-	if (fn_dev == NULL)
-		return -ENODEV;
+        fn = to_rmi_function(dev);
+        if (fn == NULL)
+                return -ENODEV;
 
-	f30 = fn_dev->data;
-	if (f30 == NULL)
-		return -ENODEV;
+        f30 = fn->data;
+        if (f30 == NULL)
+                return -ENODEV;
 
-	return snprintf(buf, PAGE_SIZE, "%u\n", f30->suppress);
+        return snprintf(buf, PAGE_SIZE, "%u\n", f30->suppress);
 }
 
-
 static ssize_t rmi_fn_30_suppress_store(struct device *dev, struct device_attribute *attr,
-					 const char *buf, size_t count)
+                                         const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev;
-	struct rmi_fn_30_data *f30;
-	int suppress;
+        struct rmi_function *fn;
+        struct rmi_fn_30_data *f30;
+        int suppress;
 
-	fn_dev = to_rmi_function_dev(dev);
-	if (fn_dev == NULL)
-		return -ENODEV;
+        fn = to_rmi_function(dev);
+        if (fn == NULL)
+                return -ENODEV;
 
-	f30 = fn_dev->data;
-	if (f30 == NULL)
-		return -ENODEV;
+        f30 = fn->data;
+        if (f30 == NULL)
+                return -ENODEV;
 
-	if (sscanf(buf, "%u", &suppress) != 1)
-		return -EINVAL;
-	if (suppress > 1)
-		return -EINVAL;
+        if (sscanf(buf, "%u", &suppress) != 1)
+                return -EINVAL;
+        if (suppress > 1)
+                return -EINVAL;
 
-	f30->suppress = suppress;
+        f30->suppress = suppress;
 
-	return count;
+        return count;
 }
 
 /* sysfs functions */

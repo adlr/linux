@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2012 Synaptics Incorporated
+ * Copyright (c) 2012-2013 Synaptics Incorporated
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -266,250 +266,250 @@ static struct attribute *attrs4[] = {
 };
 static struct attribute_group attrs_command = GROUP(attrs4);
 
-static int rmi_f21_alloc_memory(struct rmi_function_dev *fn_dev)
+static int rmi_f21_alloc_memory(struct rmi_function *fn)
 {
 	struct rmi_fn_21_data *f21;
 
-	f21 = devm_kzalloc(&fn_dev->dev, sizeof(struct rmi_fn_21_data),
+	f21 = devm_kzalloc(&fn->dev, sizeof(struct rmi_fn_21_data),
 			   GFP_KERNEL);
 	if (!f21) {
-		dev_err(&fn_dev->dev, "Failed to allocate rmi_fn_21_data.\n");
+		dev_err(&fn->dev, "Failed to allocate rmi_fn_21_data.\n");
 		return -ENOMEM;
 	}
-	fn_dev->data = f21;
+	fn->data = f21;
 
 	return 0;
 }
 
-static void rmi_f21_free_memory(struct rmi_function_dev *fn_dev)
+static void rmi_f21_free_memory(struct rmi_function *fn)
 {
-	struct rmi_fn_21_data *f21 = fn_dev->data;
+	struct rmi_fn_21_data *f21 = fn->data;
 	u8 int_num = f21->query.max_force_sensor_count;
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_query);
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_control);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_query);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_control);
 	switch (int_num) {
 	case 7:
-		sysfs_remove_file(&fn_dev->dev.kobj, attrify(int_en_force_6));
+		sysfs_remove_file(&fn->dev.kobj, attrify(int_en_force_6));
 	case 6:
-		sysfs_remove_file(&fn_dev->dev.kobj, attrify(int_en_force_5));
+		sysfs_remove_file(&fn->dev.kobj, attrify(int_en_force_5));
 	case 5:
-		sysfs_remove_file(&fn_dev->dev.kobj, attrify(int_en_force_4));
+		sysfs_remove_file(&fn->dev.kobj, attrify(int_en_force_4));
 	case 4:
-		sysfs_remove_file(&fn_dev->dev.kobj, attrify(int_en_force_3));
+		sysfs_remove_file(&fn->dev.kobj, attrify(int_en_force_3));
 	case 3:
-		sysfs_remove_file(&fn_dev->dev.kobj, attrify(int_en_force_2));
+		sysfs_remove_file(&fn->dev.kobj, attrify(int_en_force_2));
 	case 2:
-		sysfs_remove_file(&fn_dev->dev.kobj, attrify(int_en_force_1));
+		sysfs_remove_file(&fn->dev.kobj, attrify(int_en_force_1));
 	case 1:
-		sysfs_remove_file(&fn_dev->dev.kobj, attrify(int_en_force_0));
+		sysfs_remove_file(&fn->dev.kobj, attrify(int_en_force_0));
 	default:
 		break;
 	}
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_data);
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_command);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_data);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_command);
 
 }
 
-static int rmi_f21_initialize(struct rmi_function_dev *fn_dev)
+static int rmi_f21_initialize(struct rmi_function *fn)
 {
-	struct rmi_fn_21_data *f21 = fn_dev->data;
+	struct rmi_fn_21_data *f21 = fn->data;
 	int retval = 0;
 	u16 next_loc;
 
 	/* Read F21 Query Data */
-	f21->query.address = fn_dev->fd.query_base_addr;
-	retval = rmi_read_block(fn_dev->rmi_dev, f21->query.address,
+	f21->query.address = fn->fd.query_base_addr;
+	retval = rmi_read_block(fn->rmi_dev, f21->query.address,
 		(u8 *)&f21->query, sizeof(f21->query.regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read query registers from %#06x.\n",
+		dev_err(&fn->dev, "Could not read query registers from %#06x.\n",
 				f21->query.address);
 		return retval;
 	}
 
 	/* Initialize Control Data */
-	next_loc = fn_dev->fd.control_base_addr;
+	next_loc = fn->fd.control_base_addr;
 
-	f21->control.reg_0__3 = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_0__3 = devm_kzalloc(&fn->dev,
 			sizeof(union f21_2df_control_0__3), GFP_KERNEL);
 	if (!f21->control.reg_0__3) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_0__3->address = next_loc;
 	next_loc += sizeof(f21->control.reg_0__3->regs);
-	retval = rmi_read_block(fn_dev->rmi_dev, f21->control.reg_0__3->address,
+	retval = rmi_read_block(fn->rmi_dev, f21->control.reg_0__3->address,
 			f21->control.reg_0__3->regs,
 			sizeof(f21->control.reg_0__3->regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read control registers 0-3 from %#06x.\n",
+		dev_err(&fn->dev, "Could not read control registers 0-3 from %#06x.\n",
 			f21->control.reg_0__3->address);
 		return retval;
 	}
 
-	f21->control.reg_4 = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_4 = devm_kzalloc(&fn->dev,
 				sizeof(struct f21_2df_control_4), GFP_KERNEL);
 	if (!f21->control.reg_4) {
-		dev_err(&fn_dev->dev, "Failed to allocate control register.");
+		dev_err(&fn->dev, "Failed to allocate control register.");
 		return -ENOMEM;
 	}
 	f21->control.reg_4->length = f21->query.max_force_sensor_count;
-	f21->control.reg_4->regs = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_4->regs = devm_kzalloc(&fn->dev,
 		sizeof(struct f21_2df_control_4n)*f21->control.reg_4->length,
 		GFP_KERNEL);
 	if (!f21->control.reg_4->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_4->address = next_loc;
 	next_loc += f21->control.reg_4->length;
-	retval = rmi_read_block(fn_dev->rmi_dev, f21->control.reg_4->address,
+	retval = rmi_read_block(fn->rmi_dev, f21->control.reg_4->address,
 		(u8 *) f21->control.reg_4->regs, f21->control.reg_4->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read Control register 4 from %#06x.\n",
+		dev_err(&fn->dev, "Could not read Control register 4 from %#06x.\n",
 			f21->control.reg_4->address);
 		return retval;
 	}
 
 
-	f21->control.reg_5 = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_5 = devm_kzalloc(&fn->dev,
 				sizeof(struct f21_2df_control_5), GFP_KERNEL);
 	if (!f21->control.reg_5) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_5->length = f21->query.max_force_sensor_count;
-	f21->control.reg_5->regs = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_5->regs = devm_kzalloc(&fn->dev,
 		sizeof(struct f21_2df_control_5n)*f21->control.reg_5->length,
 		GFP_KERNEL);
 	if (!f21->control.reg_5->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_5->address = next_loc;
 	next_loc += f21->control.reg_5->length;
-	retval = rmi_read_block(fn_dev->rmi_dev, f21->control.reg_5->address,
+	retval = rmi_read_block(fn->rmi_dev, f21->control.reg_5->address,
 				(u8 *) f21->control.reg_5->regs,
 				f21->control.reg_5->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read Control register 5 from %#06x.\n",
+		dev_err(&fn->dev, "Could not read Control register 5 from %#06x.\n",
 				f21->control.reg_5->address);
 		return retval;
 	}
 
-	f21->control.reg_6 = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_6 = devm_kzalloc(&fn->dev,
 			sizeof(struct f21_2df_control_6), GFP_KERNEL);
 	if (!f21->control.reg_6) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_6->length = f21->query.max_force_sensor_count;
-	f21->control.reg_6->regs = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_6->regs = devm_kzalloc(&fn->dev,
 		sizeof(struct f21_2df_control_6n)*f21->control.reg_6->length,
 		GFP_KERNEL);
 	if (!f21->control.reg_6->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_6->address = next_loc;
 	next_loc += f21->control.reg_6->length;
-	retval = rmi_read_block(fn_dev->rmi_dev, f21->control.reg_6->address,
+	retval = rmi_read_block(fn->rmi_dev, f21->control.reg_6->address,
 			(u8 *) f21->control.reg_6->regs,
 				sizeof(f21->control.reg_6->regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read control register 6 from %#06x.\n",
+		dev_err(&fn->dev, "Could not read control register 6 from %#06x.\n",
 					f21->control.reg_6->address);
 		return retval;
 	}
 
-	f21->control.reg_7 = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_7 = devm_kzalloc(&fn->dev,
 				sizeof(struct f21_2df_control_7), GFP_KERNEL);
 	if (!f21->control.reg_7) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_7->length = f21->query.max_force_sensor_count;
-	f21->control.reg_7->regs = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_7->regs = devm_kzalloc(&fn->dev,
 		sizeof(struct f21_2df_control_7n)*f21->control.reg_7->length,
 		GFP_KERNEL);
 	if (!f21->control.reg_7->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_7->address = next_loc;
 	next_loc += f21->control.reg_7->length;
-	retval = rmi_read_block(fn_dev->rmi_dev, f21->control.reg_7->address,
+	retval = rmi_read_block(fn->rmi_dev, f21->control.reg_7->address,
 		(u8 *) f21->control.reg_7->regs, f21->control.reg_7->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read control register 7 from %#06x.\n",
+		dev_err(&fn->dev, "Could not read control register 7 from %#06x.\n",
 				f21->control.reg_7->address);
 		return retval;
 	}
 
-	f21->control.reg_8 = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_8 = devm_kzalloc(&fn->dev,
 				sizeof(struct f21_2df_control_8), GFP_KERNEL);
 	if (!f21->control.reg_8) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_8->length = f21->query.max_force_sensor_count;
-	f21->control.reg_8->regs = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_8->regs = devm_kzalloc(&fn->dev,
 		sizeof(struct f21_2df_control_8n) * f21->control.reg_8->length,
 		GFP_KERNEL);
 	if (!f21->control.reg_8->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_8->address = next_loc;
 	next_loc += f21->control.reg_8->length;
-	retval = rmi_read_block(fn_dev->rmi_dev, f21->control.reg_8->address,
+	retval = rmi_read_block(fn->rmi_dev, f21->control.reg_8->address,
 		(u8 *) f21->control.reg_8->regs, f21->control.reg_8->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read control register 8 from %#06x.\n",
+		dev_err(&fn->dev, "Could not read control register 8 from %#06x.\n",
 					f21->control.reg_8->address);
 		return retval;
 	}
 
-	f21->control.reg_9 = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_9 = devm_kzalloc(&fn->dev,
 			sizeof(struct f21_2df_control_9), GFP_KERNEL);
 	if (!f21->control.reg_9) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_9->length = f21->query.max_force_sensor_count;
-	f21->control.reg_9->regs = devm_kzalloc(&fn_dev->dev,
+	f21->control.reg_9->regs = devm_kzalloc(&fn->dev,
 			sizeof(struct f21_2df_control_9n)
 			*f21->control.reg_9->length, GFP_KERNEL);
 	if (!f21->control.reg_9->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_9->address = next_loc;
-	retval = rmi_read_block(fn_dev->rmi_dev, f21->control.reg_9->address,
+	retval = rmi_read_block(fn->rmi_dev, f21->control.reg_9->address,
 		(u8 *) f21->control.reg_9->regs, f21->control.reg_9->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read control register 9 from %#06x.\n",
+		dev_err(&fn->dev, "Could not read control register 9 from %#06x.\n",
 					f21->control.reg_9->address);
 		return retval;
 	}
 
 
 	/* initialize data registers */
-	next_loc = fn_dev->fd.data_base_addr;
+	next_loc = fn->fd.data_base_addr;
 
-	f21->data.reg_0__1.force_hi_lo = devm_kzalloc(&fn_dev->dev,
+	f21->data.reg_0__1.force_hi_lo = devm_kzalloc(&fn->dev,
 			2 * f21->query.max_force_sensor_count * sizeof(u8),
 			GFP_KERNEL);
 	if (!f21->data.reg_0__1.force_hi_lo) {
-		dev_err(&fn_dev->dev, "Failed to allocate data registers.");
+		dev_err(&fn->dev, "Failed to allocate data registers.");
 		return -ENOMEM;
 	}
 	f21->data.reg_0__1.address = next_loc;
 	next_loc += 2 * f21->query.max_force_sensor_count;
 
-	f21->data.reg_2 = devm_kzalloc(&fn_dev->dev,
+	f21->data.reg_2 = devm_kzalloc(&fn->dev,
 				sizeof(union f21_2df_data_2), GFP_KERNEL);
 	if (!f21->data.reg_2) {
-		dev_err(&fn_dev->dev, "Failed to allocate data registers.");
+		dev_err(&fn->dev, "Failed to allocate data registers.");
 		return -ENOMEM;
 	}
 	f21->control.reg_0__3->address = next_loc;
@@ -518,52 +518,52 @@ static int rmi_f21_initialize(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static int rmi_f21_create_sysfs(struct rmi_function_dev *fn_dev)
+static int rmi_f21_create_sysfs(struct rmi_function *fn)
 {
-	struct rmi_fn_21_data *f21 = fn_dev->data;
+	struct rmi_fn_21_data *f21 = fn->data;
 	u8 int_num = f21->query.max_force_sensor_count;
 	int rc;
 
 	if (int_num > 7)
 		int_num = 7;
-	dev_dbg(&fn_dev->dev, "Creating sysfs files.");
+	dev_dbg(&fn->dev, "Creating sysfs files.");
 
 	/* Set up sysfs device attributes. */
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_query) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create query sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_query) < 0) {
+		dev_err(&fn->dev, "Failed to create query sysfs files.");
 		return -ENODEV;
 	}
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_control) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create control sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_control) < 0) {
+		dev_err(&fn->dev, "Failed to create control sysfs files.");
 		return -ENODEV;
 	}
 	switch (int_num) {
 	case 7:
-		rc = sysfs_create_file(&fn_dev->dev.kobj,
+		rc = sysfs_create_file(&fn->dev.kobj,
 				       attrify(int_en_force_6));
 		break;
 	case 6:
-		rc = sysfs_create_file(&fn_dev->dev.kobj,
+		rc = sysfs_create_file(&fn->dev.kobj,
 				       attrify(int_en_force_5));
 		break;
 	case 5:
-		rc = sysfs_create_file(&fn_dev->dev.kobj,
+		rc = sysfs_create_file(&fn->dev.kobj,
 				       attrify(int_en_force_4));
 		break;
 	case 4:
-		rc = sysfs_create_file(&fn_dev->dev.kobj,
+		rc = sysfs_create_file(&fn->dev.kobj,
 				       attrify(int_en_force_3));
 		break;
 	case 3:
-		rc = sysfs_create_file(&fn_dev->dev.kobj,
+		rc = sysfs_create_file(&fn->dev.kobj,
 				       attrify(int_en_force_2));
 		break;
 	case 2:
-		rc = sysfs_create_file(&fn_dev->dev.kobj,
+		rc = sysfs_create_file(&fn->dev.kobj,
 				       attrify(int_en_force_1));
 		break;
 	case 1:
-		rc = sysfs_create_file(&fn_dev->dev.kobj,
+		rc = sysfs_create_file(&fn->dev.kobj,
 				       attrify(int_en_force_0));
 		break;
 	default:
@@ -571,85 +571,120 @@ static int rmi_f21_create_sysfs(struct rmi_function_dev *fn_dev)
 		break;
 	}
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "Failed to create control sysfs files.\n");
+		dev_err(&fn->dev, "Failed to create control sysfs files.\n");
 		return rc;
 	}
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_data) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create data sysfs files.\n");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_data) < 0) {
+		dev_err(&fn->dev, "Failed to create data sysfs files.\n");
 		return -ENODEV;
 	}
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_command) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create command sysfs files.\n");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_command) < 0) {
+		dev_err(&fn->dev, "Failed to create command sysfs files.\n");
 		return -ENODEV;
 	}
 	return 0;
 }
 
-static int rmi_f21_config(struct rmi_function_dev *fn_dev)
+static int rmi_f21_attention(struct rmi_function *fn,
+						unsigned long *irq_bits)
 {
-	struct rmi_fn_21_data *data = fn_dev->data;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_fn_21_data *f21 = fn->data;
+	int error;
+	int i;
+
+	error = rmi_read_block(rmi_dev, f21->data.reg_0__1.address,
+			f21->data.reg_0__1.force_hi_lo,
+			2 * f21->query.max_force_sensor_count * sizeof(u8));
+	if (error < 0) {
+		dev_err(&fn->dev, "Failed to read force data, code=%d.\n",
+			error);
+		return error;
+	}
+	error = rmi_read_block(rmi_dev, f21->data.reg_2->address,
+			       f21->data.reg_2->regs, 1);
+	if (error < 0) {
+		dev_err(&fn->dev, "Failed to read click data, code=%d.\n",
+			error);
+		return error;
+	}
+
+	for (i = 0; i < f21->query.max_force_sensor_count; i++) {
+		int msb = i;
+		int lsb = f21->query.max_force_sensor_count + i;
+		s16 force = (f21->data.reg_0__1.force_hi_lo[msb] << 8) +
+			f21->data.reg_0__1.force_hi_lo[lsb];
+		dev_dbg(&fn->dev, "Sensor %d = %d.\n", i, force);
+	}
+	dev_dbg(&fn->dev, "Click? %d.", f21->data.reg_2->force_click);
+	return 0;
+}
+
+static int rmi_f21_config(struct rmi_function *fn)
+{
+	struct rmi_fn_21_data *data = fn->data;
 	int retval;
 	/* repeated register functions */
 
 	/* Write Control Register values back to device */
-	retval = rmi_write_block(fn_dev->rmi_dev,
+	retval = rmi_write_block(fn->rmi_dev,
 				data->control.reg_0__3->address,
 				data->control.reg_0__3,
 				sizeof(data->control.reg_0__3->regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "%s : Could not write reg_0_3 to 0x%x\n",
+		dev_err(&fn->dev, "%s : Could not write reg_0_3 to 0x%x\n",
 			__func__, data->control.reg_0__3->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, data->control.reg_4->address,
+	retval = rmi_write_block(fn->rmi_dev, data->control.reg_4->address,
 			data->control.reg_4->regs, data->control.reg_4->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "%s : Could not write reg_4 to 0x%x\n",
+		dev_err(&fn->dev, "%s : Could not write reg_4 to 0x%x\n",
 			__func__, data->control.reg_4->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, data->control.reg_5->address,
+	retval = rmi_write_block(fn->rmi_dev, data->control.reg_5->address,
 			data->control.reg_5->regs, data->control.reg_5->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "%s : Could not write reg_5 to 0x%x\n",
+		dev_err(&fn->dev, "%s : Could not write reg_5 to 0x%x\n",
 			__func__, data->control.reg_5->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, data->control.reg_6->address,
+	retval = rmi_write_block(fn->rmi_dev, data->control.reg_6->address,
 			(u8 *) data->control.reg_6->regs,
 			data->control.reg_6->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "%s : Could not write reg_6 to 0x%x\n",
+		dev_err(&fn->dev, "%s : Could not write reg_6 to 0x%x\n",
 			__func__, data->control.reg_6->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, data->control.reg_7->address,
+	retval = rmi_write_block(fn->rmi_dev, data->control.reg_7->address,
 			(u8 *) data->control.reg_7->regs,
 			data->control.reg_7->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "%s : Could not write reg_7 to 0x%x\n",
+		dev_err(&fn->dev, "%s : Could not write reg_7 to 0x%x\n",
 			__func__, data->control.reg_7->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, data->control.reg_8->address,
+	retval = rmi_write_block(fn->rmi_dev, data->control.reg_8->address,
 			(u8 *) data->control.reg_8->regs,
 			data->control.reg_8->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "%s : Could not write reg_8 to 0x%x\n",
+		dev_err(&fn->dev, "%s : Could not write reg_8 to 0x%x\n",
 			__func__, data->control.reg_8->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, data->control.reg_9->address,
+	retval = rmi_write_block(fn->rmi_dev, data->control.reg_9->address,
 			(u8 *) data->control.reg_9->regs,
 			data->control.reg_9->length);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "%s : Could not write reg_9 to 0x%x\n",
+		dev_err(&fn->dev, "%s : Could not write reg_9 to 0x%x\n",
 			__func__, data->control.reg_9->address);
 		return retval;
 	}
@@ -657,33 +692,33 @@ static int rmi_f21_config(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static int rmi_f21_probe(struct rmi_function_dev *fn_dev)
+static int rmi_f21_probe(struct rmi_function *fn)
 {
 	int retval = 0;
 
-	retval = rmi_f21_alloc_memory(fn_dev);
+	retval = rmi_f21_alloc_memory(fn);
 	if (retval < 0)
 		goto error_exit;
 
-	retval = rmi_f21_initialize(fn_dev);
+	retval = rmi_f21_initialize(fn);
 	if (retval < 0)
 		goto error_exit;
 
-	retval = rmi_f21_create_sysfs(fn_dev);
+	retval = rmi_f21_create_sysfs(fn);
 	if (retval < 0)
 		goto error_exit;
 
 	return retval;
 
 error_exit:
-	rmi_f21_free_memory(fn_dev);
+	rmi_f21_free_memory(fn);
 
 	return retval;
 }
 
-static int rmi_f21_remove(struct rmi_function_dev *fn_dev)
+static int rmi_f21_remove(struct rmi_function *fn)
 {
-	rmi_f21_free_memory(fn_dev);
+	rmi_f21_free_memory(fn);
 	return 0;
 }
 
@@ -726,19 +761,19 @@ show_store_repeated_union_struct_unsigned(control, reg_9,
 static ssize_t rmi_fn_21_force_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf) {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct FUNCTION_DATA *data;
 	int reg_length;
 	int result, size = 0;
 	char *temp;
 	int i;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 
 	/* Read current regtype values */
 	reg_length = data->query.max_force_sensor_count;
-	result = rmi_read_block(fn_dev->rmi_dev, data->data.reg_0__1.address,
+	result = rmi_read_block(fn->rmi_dev, data->data.reg_0__1.address,
 			data->data.reg_0__1.force_hi_lo,
 			2 * reg_length * sizeof(u8));
 
@@ -775,14 +810,14 @@ static ssize_t rmi_fn_21_rezero_store(struct device *dev,
 				   const char *buf, size_t count) {
 	unsigned long val;
 	int error, result;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_21_data *f21;
 	struct rmi_driver *driver;
 	u8 command;
 
-	fn_dev = to_rmi_function_dev(dev);
-	f21 = fn_dev->data;
-	driver = fn_dev->rmi_dev->driver;
+	fn = to_rmi_function(dev);
+	f21 = fn->data;
+	driver = fn->rmi_dev->driver;
 
 	/* need to convert the string data to an actual value */
 	error = strict_strtoul(buf, 10, &val);
@@ -795,11 +830,11 @@ static ssize_t rmi_fn_21_rezero_store(struct device *dev,
 	command = F21_REZERO_CMD;
 
 	/* Write the command to the command register */
-	result = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.command_base_addr,
+	result = rmi_write_block(fn->rmi_dev, fn->fd.command_base_addr,
 						&command, 1);
 	if (result < 0) {
 		dev_err(dev, "%s : Could not write command to 0x%x\n",
-				__func__, fn_dev->fd.command_base_addr);
+				__func__, fn->fd.command_base_addr);
 		return result;
 	}
 	return count;
@@ -814,7 +849,7 @@ static struct rmi_function_driver function_driver = {
 	.probe = rmi_f21_probe,
 	.config = rmi_f21_config,
 	.reset = NULL,
-	.attention = NULL,
+	.attention = rmi_f21_attention,
 };
 
 module_rmi_function_driver(function_driver);

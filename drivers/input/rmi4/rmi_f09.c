@@ -85,24 +85,24 @@ static ssize_t rmi_f09_status_show(struct device *dev,
 				struct device_attribute *attr,
 				char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *instance_data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n", instance_data->status);
 }
 
 static ssize_t rmi_f09_status_store(struct device *dev,
-				      struct device_attribute *attr,
+				struct device_attribute *attr,
 				const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *instance_data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
 
 	/* any write to status resets 1 */
 	instance_data->status = 0;
@@ -111,14 +111,14 @@ static ssize_t rmi_f09_status_store(struct device *dev,
 }
 
 static ssize_t rmi_f09_limit_register_count_show(struct device *dev,
-				       struct device_attribute *attr,
+					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->query.limit_register_count);
 }
@@ -127,11 +127,11 @@ static ssize_t rmi_f09_host_test_enable_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->query.host_test_enable);
 }
@@ -140,13 +140,13 @@ static ssize_t rmi_f09_host_test_enable_store(struct device *dev,
 					  struct device_attribute *attr,
 					  const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 	unsigned int new_value;
 	int result;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	if (sscanf(buf, "%u", &new_value) != 1) {
 		dev_err(dev, "hostTestEnable has an invalid length.\n");
 		return -EINVAL;
@@ -155,13 +155,13 @@ static ssize_t rmi_f09_host_test_enable_store(struct device *dev,
 	if (new_value > 1) {
 		dev_err(dev, "Invalid hostTestEnable bit %s.\n", buf);
 		return -EINVAL;
-		}
+	}
 	data->query.host_test_enable = new_value;
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.query_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.query_base_addr,
 		data->query.host_test_enable);
 	if (result < 0) {
 		dev_err(dev, "%s: Could not write hostTestEnable to %#06x\n",
-				__func__, fn_dev->fd.query_base_addr);
+				__func__, fn->fd.query_base_addr);
 		return result;
 	}
 
@@ -173,11 +173,11 @@ static ssize_t rmi_f09_internal_limits_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->query.internal_limits);
 }
@@ -186,11 +186,11 @@ static ssize_t rmi_f09_result_register_count_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->query.result_register_count);
 }
@@ -199,11 +199,11 @@ static ssize_t rmi_f09_overall_bist_result_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->data.overall_bist_result);
 }
@@ -212,11 +212,11 @@ static ssize_t rmi_f09_test_result1_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->data.test_result1);
 }
@@ -225,11 +225,11 @@ static ssize_t rmi_f09_test_result2_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->data.test_result2);
 }
@@ -238,11 +238,11 @@ static ssize_t rmi_f09_run_bist_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->cmd.run_bist);
 }
@@ -251,13 +251,13 @@ static ssize_t rmi_f09_run_bist_store(struct device *dev,
 				      struct device_attribute *attr,
 					const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 	unsigned int new_value;
 	int result;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	if (sscanf(buf, "%u", &new_value) != 1) {
 		dev_err(dev, "run_bist_store has an invalid len.\n");
 		return -EINVAL;
@@ -268,11 +268,11 @@ static ssize_t rmi_f09_run_bist_store(struct device *dev,
 		return -EINVAL;
 	}
 	data->cmd.run_bist = new_value;
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.command_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.command_base_addr,
 		data->cmd.run_bist);
 	if (result < 0) {
 		dev_err(dev, "Could not write run_bist_store to %#06x\n",
-				fn_dev->fd.command_base_addr);
+				fn->fd.command_base_addr);
 		return result;
 	}
 
@@ -284,11 +284,11 @@ static ssize_t rmi_f09_control_test1_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u %u %u\n",
 			data->control.test1_limit_low,
 			data->control.test1_limit_high,
@@ -299,13 +299,13 @@ static ssize_t rmi_f09_control_test1_store(struct device *dev,
 				      struct device_attribute *attr,
 					const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 	unsigned int new_low, new_high, new_diff;
 	int result;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	if (sscanf(buf, "%u %u %u", &new_low, &new_high, &new_diff) != 3) {
 		dev_err(dev, "f09_control_test1_store has an invalid len.\n");
 		return -EINVAL;
@@ -320,27 +320,27 @@ static ssize_t rmi_f09_control_test1_store(struct device *dev,
 	data->control.test1_limit_low = new_low;
 	data->control.test1_limit_high = new_high;
 	data->control.test1_limit_diff = new_diff;
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 		data->control.test1_limit_low);
 	if (result < 0) {
 		dev_err(dev, "Could not write f09_control_test1_limit_low to %#06x.\n",
-				fn_dev->fd.control_base_addr);
+				fn->fd.control_base_addr);
 		return result;
 	}
 
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 		data->control.test1_limit_high);
 	if (result < 0) {
 		dev_err(dev, "Could not write f09_control_test1_limit_high to %#06x\n",
-				fn_dev->fd.control_base_addr);
+				fn->fd.control_base_addr);
 		return result;
 	}
 
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 		data->control.test1_limit_diff);
 	if (result < 0) {
 		dev_err(dev, "Could not write f09_control_test1_limit_diff to %#06x\n",
-				fn_dev->fd.control_base_addr);
+				fn->fd.control_base_addr);
 		return result;
 	}
 
@@ -352,11 +352,11 @@ static ssize_t rmi_f09_control_test2_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u %u %u\n",
 			data->control.test2_limit_low,
 			data->control.test2_limit_high,
@@ -367,13 +367,13 @@ static ssize_t rmi_f09_control_test2_store(struct device *dev,
 				      struct device_attribute *attr,
 					const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 	unsigned int new_low, new_high, new_diff;
 	int result;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	if (sscanf(buf, "%u %u %u", &new_low, &new_high, &new_diff) != 3) {
 		dev_err(dev, "f09_control_test1_store has an invalid len.\n");
 		return -EINVAL;
@@ -388,27 +388,27 @@ static ssize_t rmi_f09_control_test2_store(struct device *dev,
 	data->control.test2_limit_low = new_low;
 	data->control.test2_limit_high = new_high;
 	data->control.test2_limit_diff = new_diff;
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 		data->control.test2_limit_low);
 	if (result < 0) {
 		dev_err(dev, "Could not write f09_control_test2_limit_low to %#06x\n",
-				fn_dev->fd.control_base_addr);
+				fn->fd.control_base_addr);
 		return result;
 	}
 
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 		data->control.test2_limit_high);
 	if (result < 0) {
 		dev_err(dev, "Could not write f09_control_test2_limit_high to %#06x\n",
-				fn_dev->fd.control_base_addr);
+				fn->fd.control_base_addr);
 		return result;
 	}
 
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 		data->control.test2_limit_diff);
 	if (result < 0) {
 		dev_err(dev, "%s : Could not write f09_control_test2_limit_diff to 0x%x\n",
-				__func__, fn_dev->fd.control_base_addr);
+				__func__, fn->fd.control_base_addr);
 		return result;
 	}
 
@@ -421,11 +421,11 @@ static ssize_t rmi_f09_test_number_control_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			data->data.test_number_control);
 }
@@ -434,13 +434,13 @@ static ssize_t rmi_f09_test_number_control_store(struct device *dev,
 				      struct device_attribute *attr,
 					const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_09_data *data;
 	unsigned int new_value;
 	int result;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	if (sscanf(buf, "%u", &new_value) != 1) {
 		dev_err(dev, "test_number_control_store has aninvalid len.\n");
 		return -EINVAL;
@@ -451,11 +451,11 @@ static ssize_t rmi_f09_test_number_control_store(struct device *dev,
 		return -EINVAL;
 	}
 	data->data.test_number_control = new_value;
-	result = rmi_write(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_write(fn->rmi_dev, fn->fd.control_base_addr,
 		data->data.test_number_control);
 	if (result < 0) {
 		dev_err(dev, "Could not write test_number_control_store to %#06x\n",
-				fn_dev->fd.data_base_addr);
+				fn->fd.data_base_addr);
 		return result;
 	}
 
@@ -490,38 +490,38 @@ static struct device_attribute attrs[] = {
 	       rmi_f09_control_test2_show, rmi_f09_control_test2_store),
 };
 
-static int rmi_f09_alloc_memory(struct rmi_function_dev *fn_dev)
+static int rmi_f09_alloc_memory(struct rmi_function *fn)
 {
 	struct rmi_fn_09_data *f09;
 
-	f09 = devm_kzalloc(&fn_dev->dev, sizeof(struct rmi_fn_09_data),
+	f09 = devm_kzalloc(&fn->dev, sizeof(struct rmi_fn_09_data),
 			GFP_KERNEL);
 	if (!f09) {
-		dev_err(&fn_dev->dev, "Failed to allocate rmi_fn_09_data.\n");
+		dev_err(&fn->dev, "Failed to allocate rmi_fn_09_data.\n");
 		return -ENOMEM;
 	}
-	fn_dev->data = f09;
+	fn->data = f09;
 
 	return 0;
 }
 
-static int rmi_f09_initialize(struct rmi_function_dev *fn_dev)
+static int rmi_f09_initialize(struct rmi_function *fn)
 {
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_device_platform_data *pdata;
-	struct rmi_fn_09_data *f09 = fn_dev->data;
+	struct rmi_fn_09_data *f09 = fn->data;
 	u16 query_base_addr;
 	int rc;
 
 
 	pdata = to_rmi_platform_data(rmi_dev);
-	query_base_addr = fn_dev->fd.query_base_addr;
+	query_base_addr = fn->fd.query_base_addr;
 
 	/* initial all default values for f09 query here */
 	rc = rmi_read_block(rmi_dev, query_base_addr,
 		(u8 *)&f09->query, sizeof(f09->query));
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "Failed to read query register from %#06x\n",
+		dev_err(&fn->dev, "Failed to read query register from %#06x\n",
 				query_base_addr);
 		return rc;
 	}
@@ -529,17 +529,17 @@ static int rmi_f09_initialize(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static int rmi_f09_create_sysfs(struct rmi_function_dev *fn_dev)
+static int rmi_f09_create_sysfs(struct rmi_function *fn)
 {
 	int attr_count = 0;
 	int rc;
 
-	dev_dbg(&fn_dev->dev, "Creating sysfs files.");
+	dev_dbg(&fn->dev, "Creating sysfs files.");
 	/* Set up sysfs device attributes. */
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
 		if (sysfs_create_file
-		    (&fn_dev->dev.kobj, &attrs[attr_count].attr) < 0) {
-			dev_err(&fn_dev->dev, "Failed to create sysfs file for %s.",
+		    (&fn->dev.kobj, &attrs[attr_count].attr) < 0) {
+			dev_err(&fn->dev, "Failed to create sysfs file for %s.",
 			     attrs[attr_count].attr.name);
 			rc = -ENODEV;
 			goto err_remove_sysfs;
@@ -550,55 +550,55 @@ static int rmi_f09_create_sysfs(struct rmi_function_dev *fn_dev)
 
 err_remove_sysfs:
 	for (attr_count--; attr_count >= 0; attr_count--)
-		sysfs_remove_file(&fn_dev->dev.kobj,
+		sysfs_remove_file(&fn->dev.kobj,
 				  &attrs[attr_count].attr);
 
 	return rc;
 }
 
-static int rmi_f09_probe(struct rmi_function_dev *fn_dev)
+static int rmi_f09_probe(struct rmi_function *fn)
 {
 	int rc;
 
-	dev_info(&fn_dev->dev, "Intializing F09 values.");
+	dev_info(&fn->dev, "Intializing F09 values.");
 
-	rc = rmi_f09_alloc_memory(fn_dev);
+	rc = rmi_f09_alloc_memory(fn);
 	if (rc < 0)
 		return rc;
 
-	rc = rmi_f09_initialize(fn_dev);
+	rc = rmi_f09_initialize(fn);
 	if (rc < 0)
 		return rc;
 
-	rc = rmi_f09_create_sysfs(fn_dev);
+	rc = rmi_f09_create_sysfs(fn);
 	if (rc < 0)
 		return rc;
 
 	return 0;
 }
 
-static int rmi_f09_remove(struct rmi_function_dev *fn_dev)
+static int rmi_f09_remove(struct rmi_function *fn)
 {
 	int attr_count;
 
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++)
-		sysfs_remove_file(&fn_dev->dev.kobj,
+		sysfs_remove_file(&fn->dev.kobj,
 				  &attrs[attr_count].attr);
 
 	return 0;
 }
 
-static int rmi_f09_attention(struct rmi_function_dev *fn_dev,
+static int rmi_f09_attention(struct rmi_function *fn,
 						unsigned long *irq_bits)
 {
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_fn_09_data *data = fn_dev->data;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_fn_09_data *data = fn->data;
 	int error;
-	error = rmi_read_block(rmi_dev, fn_dev->fd.command_base_addr,
+	error = rmi_read_block(rmi_dev, fn->fd.command_base_addr,
 			(u8 *)&data->cmd, sizeof(data->cmd));
 
 	if (error < 0) {
-		dev_err(&fn_dev->dev, "Failed to read command register.\n");
+		dev_err(&fn->dev, "Failed to read command register.\n");
 		return error;
 	}
 

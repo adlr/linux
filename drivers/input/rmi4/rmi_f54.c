@@ -12,8 +12,6 @@
 #include <linux/rmi.h>
 #include <linux/slab.h>
 #include <linux/version.h>
-#include <linux/fs.h>
-#include <linux/uaccess.h>
 
 #define FUNCTION_DATA rmi_fn_54_data
 #define FNUM 54
@@ -49,57 +47,34 @@
 #define RMI_54_HIGH_RESISTANCE_SIZE 6
 
 #define FUNCTION_NUMBER 0x54
-
-/* data already read (STALE or FRESH)? */
-#define F54_REPORT_FRESH     1
-#define F54_REPORT_STALE     0
-#define RMI_F54_WATCHDOG_TIMEOUT_MSEC 100
-#define RMI_F54_STEP_MSEC 5
-#define MAX_USER_BUFFER_SIZE 16
-
-#define FN_54_DT_CONF_BUFFER_SIZE 2048
-
-/* character device name for fast image transfer (if enabled) */
-/* the device_register will add another '0' to this, making it "rawsensor00" */
-#define RAW_IMAGE_CHAR_DEVICE_NAME "rawsensor0"
-
-struct raw_data_char_dev {
-	/* mutex for file operation*/
-	struct mutex mutex_file_op;
-	/* main char dev structure */
-	struct cdev raw_data_dev;
-	struct class *raw_data_device_class;
-	struct rmi_fn_54_data *my_parents_instance_data;
-};
-
 /* definitions for F54 Query Registers */
 union f54_ad_query {
 	struct {
-	/* query 0 */
+		/* query 0 */
 		u8 num_of_rx_electrodes;
 
-	/* query 1 */
+		/* query 1 */
 		u8 num_of_tx_electrodes;
 
-			/* query2 */
-			u8 f54_ad_query2_b0__1:2;
-			u8 has_baseline:1;
-			u8 has_image8:1;
-			u8 f54_ad_query2_b4__5:2;
-			u8 has_image16:1;
-			u8 f54_ad_query2_b7:1;
+		/* query2 */
+		u8 f54_ad_query2_b0__1:2;
+		u8 has_baseline:1;
+		u8 has_image8:1;
+		u8 f54_ad_query2_b4__5:2;
+		u8 has_image16:1;
+		u8 f54_ad_query2_b7:1;
 
-	/* query 3.0 and 3.1 */
-	u16 clock_rate;
+		/* query 3.0 and 3.1 */
+		u16 clock_rate;
 
-	/* query 4 */
-	u8 touch_controller_family;
+		/* query 4 */
+		u8 touch_controller_family;
 
-	/* query 5 */
-			u8 has_pixel_touch_threshold_adjustment:1;
-			u8 f54_ad_query5_b1__7:7;
+		/* query 5 */
+		u8 has_pixel_touch_threshold_adjustment:1;
+		u8 f54_ad_query5_b1__7:7;
 
-	/* query 6 */
+		/* query 6 */
 		u8 has_sensor_assignment:1;
 		u8 has_interference_metric:1;
 		u8 has_sense_frequency_control:1;
@@ -109,11 +84,11 @@ union f54_ad_query {
 		u8 has_one_byte_report_rate:1;
 		u8 has_relaxation_control:1;
 
-	/* query 7 */
-			u8 curve_compensation_mode:2;
-			u8 f54_ad_query7_b2__7:6;
+		/* query 7 */
+		u8 curve_compensation_mode:2;
+		u8 f54_ad_query7_b2__7:6;
 
-	/* query 8 */
+		/* query 8 */
 		u8 f54_ad_query2_b0:1;
 		u8 has_iir_filter:1;
 		u8 has_cmn_removal:1;
@@ -123,16 +98,16 @@ union f54_ad_query {
 		u8 has_per_frequency_noise_control:1;
 		u8 f54_ad_query8_b7:1;
 
-	u8 f54_ad_query9;
-	u8 f54_ad_query10;
+		u8 f54_ad_query9;
+		u8 f54_ad_query10;
 
 		/* query 11 */
 		u8 f54_ad_query11_b0__6:7;
 		u8 has_query_15:1;
 
-	/* query 12 */
-			u8 number_of_sensing_frequencies:4;
-			u8 f54_ad_query12_b4__7:4;
+		/* query 12 */
+		u8 number_of_sensing_frequencies:4;
+		u8 f54_ad_query12_b4__7:4;
 	} __attribute__((__packed__));
 	struct {
 		u8 regs[14];
@@ -599,10 +574,8 @@ enum f54_report_types {
 	F54_RX_TO_RX2 = 17,
 	F54_RX_OPENS2 = 18,
 	F54_FULL_RAW_CAP = 19,
-	F54_FULL_RAW_CAP_RX_COUPLING_COMP = 20,
-	F54_16BIT_UNSIGNED_RAW_IMAGE  =    24,
+	F54_FULL_RAW_CAP_RX_COUPLING_COMP = 20
 };
-
 
 /* sysfs functions */
 show_store_union_struct_prototype(report_type)
@@ -928,14 +901,9 @@ struct rmi_fn_54_data {
 #if F54_WATCHDOG
 	struct hrtimer watchdog;
 #endif
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct work_struct work;
-
-	signed char fresh_or_stale;
-	struct raw_data_char_dev *raw_data_feed;
 };
-
-static int raw_data_char_dev_register(struct rmi_fn_54_data *);
 
 /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
 #if F54_WATCHDOG
@@ -944,76 +912,76 @@ static enum hrtimer_restart clear_status(struct hrtimer *timer);
 static void clear_status_worker(struct work_struct *work);
 #endif
 
-static int rmi_f54_alloc_memory(struct rmi_function_dev *fn_dev);
+static int rmi_f54_alloc_memory(struct rmi_function *fn);
 
-static void rmi_f54_free_memory(struct rmi_function_dev *fn_dev);
+static void rmi_f54_free_memory(struct rmi_function *fn);
 
-static int rmi_f54_initialize(struct rmi_function_dev *fn_dev);
+static int rmi_f54_initialize(struct rmi_function *fn);
 
-static int rmi_f54_reset(struct rmi_function_dev *fn_dev);
+static int rmi_f54_reset(struct rmi_function *fn);
 
-static int rmi_f54_create_sysfs(struct rmi_function_dev *fn_dev);
+static int rmi_f54_create_sysfs(struct rmi_function *fn);
 
-static int rmi_f54_probe(struct rmi_function_dev *fn_dev)
+static int rmi_f54_probe(struct rmi_function *fn)
 {
 	int retval = 0;
 	struct rmi_fn_54_data *f54;
 
-	retval = rmi_f54_alloc_memory(fn_dev);
+	retval = rmi_f54_alloc_memory(fn);
 	if (retval < 0)
 		goto error_exit;
 
-	retval = rmi_f54_initialize(fn_dev);
-	if (retval < 0)
-			goto error_exit;
-
-	retval = rmi_f54_create_sysfs(fn_dev);
+	retval = rmi_f54_initialize(fn);
 	if (retval < 0)
 		goto error_exit;
-	f54 = fn_dev->data;
+
+	retval = rmi_f54_create_sysfs(fn);
+	if (retval < 0)
+		goto error_exit;
+	f54 = fn->data;
 	f54->status = IDLE;
 	return retval;
 
 error_exit:
-	rmi_f54_free_memory(fn_dev);
+	rmi_f54_free_memory(fn);
 
 	return retval;
 }
 
-static int rmi_f54_alloc_memory(struct rmi_function_dev *fn_dev)
+static int rmi_f54_alloc_memory(struct rmi_function *fn)
 {
 	struct rmi_fn_54_data *f54;
 
-	f54 = devm_kzalloc(&fn_dev->dev,
+	f54 = devm_kzalloc(&fn->dev,
 			   sizeof(struct rmi_fn_54_data), GFP_KERNEL);
 	if (!f54) {
-		dev_err(&fn_dev->dev, "Failed to allocate rmi_fn_54_data.\n");
+		dev_err(&fn->dev, "Failed to allocate rmi_fn_54_data.\n");
 		return -ENOMEM;
 	}
-	fn_dev->data = f54;
-	f54->fn_dev = fn_dev;
+	fn->data = f54;
+	f54->fn = fn;
 
 
 	return 0;
 }
 
-static void rmi_f54_free_memory(struct rmi_function_dev *fn_dev)
+static void rmi_f54_free_memory(struct rmi_function *fn)
 {
 	int reg_num;
-	struct rmi_fn_54_data *f54 = fn_dev->data;
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_query);
+	struct rmi_fn_54_data *f54 = fn->data;
+	sysfs_remove_group(&fn->dev.kobj, &attrs_query);
 	for (reg_num = 0; reg_num < ARRAY_SIZE(attrs_ctrl_regs); reg_num++)
-		sysfs_remove_group(&fn_dev->dev.kobj,
+		sysfs_remove_group(&fn->dev.kobj,
 				   &attrs_ctrl_regs[reg_num]);
-	sysfs_remove_bin_file(&fn_dev->dev.kobj, &dev_rep_data);
+	sysfs_remove_bin_file(&fn->dev.kobj, &dev_rep_data);
 	if (f54)
 		kfree(f54->report_data);
 }
 
-static int rmi_f54_reset(struct rmi_function_dev *fn_dev)
+static int rmi_f54_reset(struct rmi_function *fn)
 {
-	struct rmi_fn_54_data *data = fn_dev->data;
-	struct rmi_driver *driver = fn_dev->rmi_dev->driver;
+	struct rmi_fn_54_data *data = fn->data;
+	struct rmi_driver *driver = fn->rmi_dev->driver;
 
 #if F54_WATCHDOG
 	hrtimer_cancel(&data->watchdog);
@@ -1021,70 +989,49 @@ static int rmi_f54_reset(struct rmi_function_dev *fn_dev)
 
 	mutex_lock(&data->status_mutex);
 	if (driver->restore_irq_mask) {
-		dev_dbg(&fn_dev->dev, "Restoring interupts!\n");
-		driver->restore_irq_mask(fn_dev->rmi_dev);
+		dev_dbg(&fn->dev, "Restoring interupts!\n");
+		driver->restore_irq_mask(fn->rmi_dev);
 	} else {
-		dev_err(&fn_dev->dev, "No way to restore interrupts!\n");
+		dev_err(&fn->dev, "No way to restore interrupts!\n");
 	}
 	data->status = -ECONNRESET;
 	mutex_unlock(&data->status_mutex);
-	/*
-	* for direct touch mode, we need to let the 
-	* user space process know that a reset
-	* has occurred
-	*/
-	dev_dbg(&fn_dev->dev, "%s: checking report_type ( = %d ) \n", __func__, data->report_type);
-
-	if (data->report_type == F54_16BIT_UNSIGNED_RAW_IMAGE
-	    &&
-	    data->report_data
-	    &&
-	    data->report_size > 80) {
-
-	  strcpy(&data->report_data[data->report_size-80],
-		 "resetresetresetreset");
-	  data->fresh_or_stale = F54_REPORT_FRESH;
-	  mutex_lock(&data->status_mutex);
-	  data->status = IDLE;
-	  mutex_unlock(&data->status_mutex);
-	}
-
 
 	return 0;
 }
 
-static int rmi_f54_remove(struct rmi_function_dev *fn_dev)
+static int rmi_f54_remove(struct rmi_function *fn)
 {
-	struct rmi_fn_54_data *data = fn_dev->data;
+	struct rmi_fn_54_data *data = fn->data;
 
 #if F54_WATCHDOG
 	/* Stop timer */
 	hrtimer_cancel(&data->watchdog);
 #endif
 
-	rmi_f54_free_memory(fn_dev);
+	rmi_f54_free_memory(fn);
 
 	return 0;
 }
 
-static int rmi_f54_create_sysfs(struct rmi_function_dev *fn_dev)
+static int rmi_f54_create_sysfs(struct rmi_function *fn)
 {
 	int reg_num;
 	int retval;
-	struct rmi_fn_54_data *f54 = fn_dev->data;
-	dev_dbg(&fn_dev->dev, "Creating sysfs files.");
+	struct rmi_fn_54_data *f54 = fn->data;
+	dev_dbg(&fn->dev, "Creating sysfs files.");
 	/* Set up sysfs device attributes. */
 
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_query) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create query sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_query) < 0) {
+		dev_err(&fn->dev, "Failed to create query sysfs files.");
 		return -ENODEV;
 	}
 	for (reg_num = 0; reg_num < ARRAY_SIZE(attrs_ctrl_regs); reg_num++) {
 		if (f54->attrs_ctrl_regs_exist[reg_num]) {
-			retval = sysfs_create_group(&fn_dev->dev.kobj,
+			retval = sysfs_create_group(&fn->dev.kobj,
 					&attrs_ctrl_regs[reg_num]);
 			if (retval < 0) {
-				dev_err(&fn_dev->dev, "Failed to create sysfs file group for reg group %d, error = %d.",
+				dev_err(&fn->dev, "Failed to create sysfs file group for reg group %d, error = %d.",
 							reg_num, retval);
 				return -ENODEV;
 			}
@@ -1092,9 +1039,9 @@ static int rmi_f54_create_sysfs(struct rmi_function_dev *fn_dev)
 	}
 
 	/* Binary sysfs file to report the data back */
-	retval = sysfs_create_bin_file(&fn_dev->dev.kobj, &dev_rep_data);
+	retval = sysfs_create_bin_file(&fn->dev.kobj, &dev_rep_data);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Failed to create sysfs file for F54 data (error = %d).\n",
+		dev_err(&fn->dev, "Failed to create sysfs file for F54 data (error = %d).\n",
 				retval);
 		return -ENODEV;
 	}
@@ -1103,9 +1050,9 @@ static int rmi_f54_create_sysfs(struct rmi_function_dev *fn_dev)
 
 
 
-static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
+static int rmi_f54_initialize(struct rmi_function *fn)
 {
-	struct rmi_fn_54_data *f54 = fn_dev->data;
+	struct rmi_fn_54_data *f54 = fn->data;
 	struct f54_ad_control *control;
 	int retval = 0;
 	u8 size = 0;
@@ -1122,25 +1069,25 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 #endif
 
 	/* Read F54 Query Data */
-	retval = rmi_read_block(fn_dev->rmi_dev, fn_dev->fd.query_base_addr,
+	retval = rmi_read_block(fn->rmi_dev, fn->fd.query_base_addr,
 		(u8 *)&f54->query, sizeof(f54->query));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not read query registers from 0x%04x\n",
-				fn_dev->fd.query_base_addr);
+		dev_err(&fn->dev, "Could not read query registers from 0x%04x\n",
+				fn->fd.query_base_addr);
 		return retval;
 	}
 
 	/* Initialize the control registers */
-	next_loc = fn_dev->fd.control_base_addr;
+	next_loc = fn->fd.control_base_addr;
 	reg_num = 0;
 	control = &f54->control;
 
 	f54->attrs_ctrl_regs_exist[reg_num] = true;
 	reg_num++;
-	control->reg_0 = devm_kzalloc(&fn_dev->dev,
+	control->reg_0 = devm_kzalloc(&fn->dev,
 				sizeof(union f54_ad_control_0), GFP_KERNEL);
 	if (!control->reg_0) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_0->address = next_loc;
@@ -1149,11 +1096,11 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 	if (f54->query.touch_controller_family == 0
 			|| f54->query.touch_controller_family == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_1 = devm_kzalloc(&fn_dev->dev,
+		control->reg_1 = devm_kzalloc(&fn->dev,
 						sizeof(union f54_ad_control_1),
 						GFP_KERNEL);
 		if (!control->reg_1) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_1->address = next_loc;
@@ -1163,10 +1110,10 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	f54->attrs_ctrl_regs_exist[reg_num] = true;
 	reg_num++;
-	control->reg_2 = devm_kzalloc(&fn_dev->dev,
+	control->reg_2 = devm_kzalloc(&fn->dev,
 				sizeof(union f54_ad_control_2), GFP_KERNEL);
 	if (!control->reg_2) {
-		dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+		dev_err(&fn->dev, "Failed to allocate control registers.");
 		return -ENOMEM;
 	}
 	control->reg_2->address = next_loc;
@@ -1175,11 +1122,11 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 	if (f54->query.has_pixel_touch_threshold_adjustment == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
 
-		control->reg_3 = devm_kzalloc(&fn_dev->dev,
+		control->reg_3 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_3),
 					GFP_KERNEL);
 		if (!control->reg_3) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_3->address = next_loc;
@@ -1190,11 +1137,11 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 	if (f54->query.touch_controller_family == 0
 		|| f54->query.touch_controller_family == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_4__6 = devm_kzalloc(&fn_dev->dev,
+		control->reg_4__6 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_4__6),
 					GFP_KERNEL);
 		if (!control->reg_4__6) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_4__6->address = next_loc;
@@ -1204,11 +1151,11 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.touch_controller_family == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_7 = devm_kzalloc(&fn_dev->dev,
+		control->reg_7 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_7),
 					GFP_KERNEL);
 		if (!control->reg_7) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_7->address = next_loc;
@@ -1219,11 +1166,11 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 	if (f54->query.touch_controller_family == 0
 		|| f54->query.touch_controller_family == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_8__9 = devm_kzalloc(&fn_dev->dev,
+		control->reg_8__9 = devm_kzalloc(&fn->dev,
 				sizeof(union f54_ad_control_8__9),
 				GFP_KERNEL);
 		if (!control->reg_8__9) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_8__9->address = next_loc;
@@ -1233,11 +1180,11 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_interference_metric == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_10 = devm_kzalloc(&fn_dev->dev,
+		control->reg_10 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_10),
 					GFP_KERNEL);
 		if (!control->reg_10) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_10->address = next_loc;
@@ -1250,10 +1197,10 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_relaxation_control == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_12__13 = devm_kzalloc(&fn_dev->dev,
+		control->reg_12__13 = devm_kzalloc(&fn->dev,
 			sizeof(union f54_ad_control_12__13), GFP_KERNEL);
 		if (!control->reg_12__13) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_12__13->address = next_loc;
@@ -1263,45 +1210,45 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_sensor_assignment == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_14 = devm_kzalloc(&fn_dev->dev,
+		control->reg_14 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_14),
 					GFP_KERNEL);
 		if (!control->reg_14) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
-		control->reg_15 = devm_kzalloc(&fn_dev->dev,
+		control->reg_15 = devm_kzalloc(&fn->dev,
 					sizeof(struct f54_ad_control_15),
 					GFP_KERNEL);
 		if (!control->reg_15) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_15->length = f54->query.num_of_rx_electrodes;
-		control->reg_15->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_15->regs = devm_kzalloc(&fn->dev,
 					control->reg_15->length *
 					sizeof(struct f54_ad_control_15n),
 					GFP_KERNEL);
 		if (!control->reg_15->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
-		control->reg_16 = devm_kzalloc(&fn_dev->dev,
+		control->reg_16 = devm_kzalloc(&fn->dev,
 					sizeof(struct f54_ad_control_16),
 					GFP_KERNEL);
 		if (!control->reg_16) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_16->length = f54->query.num_of_tx_electrodes;
-		control->reg_16->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_16->regs = devm_kzalloc(&fn->dev,
 					control->reg_16->length *
 					sizeof(struct f54_ad_control_16n),
 					GFP_KERNEL);
 		if (!control->reg_16->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
@@ -1318,51 +1265,51 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
 		size = f54->query.number_of_sensing_frequencies;
 
-		control->reg_17 = devm_kzalloc(&fn_dev->dev,
+		control->reg_17 = devm_kzalloc(&fn->dev,
 					sizeof(struct f54_ad_control_17),
 					GFP_KERNEL);
 		if (!control->reg_17) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_17->length = size;
-		control->reg_17->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_17->regs = devm_kzalloc(&fn->dev,
 				size * sizeof(struct f54_ad_control_17n),
 				GFP_KERNEL);
 		if (!control->reg_17->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
-		control->reg_18 = devm_kzalloc(&fn_dev->dev,
+		control->reg_18 = devm_kzalloc(&fn->dev,
 				sizeof(struct f54_ad_control_18),
 				GFP_KERNEL);
 		if (!control->reg_18) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_18->length = size;
-		control->reg_18->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_18->regs = devm_kzalloc(&fn->dev,
 				size * sizeof(struct f54_ad_control_18n),
 				GFP_KERNEL);
 		if (!control->reg_18->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
-		control->reg_19 = devm_kzalloc(&fn_dev->dev,
+		control->reg_19 = devm_kzalloc(&fn->dev,
 					sizeof(struct f54_ad_control_19),
 					GFP_KERNEL);
 		if (!control->reg_19) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_19->length = size;
-		control->reg_19->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_19->regs = devm_kzalloc(&fn->dev,
 				size * sizeof(struct f54_ad_control_19n),
 				GFP_KERNEL);
 		if (!control->reg_19->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
@@ -1376,7 +1323,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 	reg_num++;
 
 	f54->attrs_ctrl_regs_exist[reg_num] = true;
-	control->reg_20 = devm_kzalloc(&fn_dev->dev,
+	control->reg_20 = devm_kzalloc(&fn->dev,
 				sizeof(union f54_ad_control_20), GFP_KERNEL);
 	control->reg_20->address = next_loc;
 	next_loc += sizeof(control->reg_20->regs);
@@ -1384,7 +1331,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_sense_frequency_control == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_21 = devm_kzalloc(&fn_dev->dev,
+		control->reg_21 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_21),
 					GFP_KERNEL);
 		control->reg_21->address = next_loc;
@@ -1394,7 +1341,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_sense_frequency_control == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_22__26 = devm_kzalloc(&fn_dev->dev,
+		control->reg_22__26 = devm_kzalloc(&fn->dev,
 				sizeof(union f54_ad_control_22__26),
 				GFP_KERNEL);
 		control->reg_22__26->address = next_loc;
@@ -1404,7 +1351,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_iir_filter == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_27 = devm_kzalloc(&fn_dev->dev,
+		control->reg_27 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_27),
 					GFP_KERNEL);
 		control->reg_27->address = next_loc;
@@ -1414,7 +1361,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_firmware_noise_mitigation == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_28 = devm_kzalloc(&fn_dev->dev,
+		control->reg_28 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_28),
 					GFP_KERNEL);
 		control->reg_28->address = next_loc;
@@ -1424,7 +1371,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_cmn_removal == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_29 = devm_kzalloc(&fn_dev->dev,
+		control->reg_29 = devm_kzalloc(&fn->dev,
 					sizeof(union f54_ad_control_29),
 					GFP_KERNEL);
 		control->reg_29->address = next_loc;
@@ -1434,7 +1381,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_cmn_maximum == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_30 = devm_kzalloc(&fn_dev->dev,
+		control->reg_30 = devm_kzalloc(&fn->dev,
 				sizeof(union f54_ad_control_30),
 				GFP_KERNEL);
 		control->reg_30->address = next_loc;
@@ -1444,7 +1391,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_touch_hysteresis == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_31 = devm_kzalloc(&fn_dev->dev,
+		control->reg_31 = devm_kzalloc(&fn->dev,
 				sizeof(union f54_ad_control_31),
 				GFP_KERNEL);
 		control->reg_31->address = next_loc;
@@ -1454,7 +1401,7 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	if (f54->query.has_interference_metric == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
-		control->reg_32__35 = devm_kzalloc(&fn_dev->dev,
+		control->reg_32__35 = devm_kzalloc(&fn->dev,
 			sizeof(union f54_ad_control_32__35), GFP_KERNEL);
 		control->reg_32__35->address = next_loc;
 		next_loc += sizeof(control->reg_32__35->regs);
@@ -1471,18 +1418,18 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 			|| f54->query.curve_compensation_mode == 2) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
 
-		control->reg_36 = devm_kzalloc(&fn_dev->dev,
+		control->reg_36 = devm_kzalloc(&fn->dev,
 				sizeof(struct f54_ad_control_36), GFP_KERNEL);
 		if (!control->reg_36) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_36->length = size;
-		control->reg_36->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_36->regs = devm_kzalloc(&fn->dev,
 				size * sizeof(struct f54_ad_control_36n),
 				GFP_KERNEL);
 		if (!control->reg_36->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
@@ -1494,19 +1441,19 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 	if (f54->query.curve_compensation_mode == 2) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
 
-		control->reg_37 = devm_kzalloc(&fn_dev->dev,
+		control->reg_37 = devm_kzalloc(&fn->dev,
 				sizeof(struct f54_ad_control_37), GFP_KERNEL);
 		if (!control->reg_37) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_37->length = f54->query.num_of_tx_electrodes;
-		control->reg_37->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_37->regs = devm_kzalloc(&fn->dev,
 				control->reg_37->length*
 				sizeof(struct f54_ad_control_37n),
 				GFP_KERNEL);
 		if (!control->reg_37->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
@@ -1518,54 +1465,54 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 	if (f54->query.has_per_frequency_noise_control == 1) {
 		f54->attrs_ctrl_regs_exist[reg_num] = true;
 
-		control->reg_38 = devm_kzalloc(&fn_dev->dev,
+		control->reg_38 = devm_kzalloc(&fn->dev,
 				sizeof(struct f54_ad_control_38), GFP_KERNEL);
 		if (!control->reg_38) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_38->length =
 				f54->query.number_of_sensing_frequencies;
-		control->reg_38->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_38->regs = devm_kzalloc(&fn->dev,
 			control->reg_38->length*
 			sizeof(struct f54_ad_control_38n),
 			GFP_KERNEL);
 		if (!control->reg_38->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
-		control->reg_39 = devm_kzalloc(&fn_dev->dev,
+		control->reg_39 = devm_kzalloc(&fn->dev,
 				sizeof(struct f54_ad_control_39), GFP_KERNEL);
 		if (!control->reg_39) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_39->length =
 				f54->query.number_of_sensing_frequencies;
-		control->reg_39->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_39->regs = devm_kzalloc(&fn->dev,
 				control->reg_39->length*
 				sizeof(struct f54_ad_control_39n),
 				GFP_KERNEL);
 		if (!control->reg_39->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
-		control->reg_40 = devm_kzalloc(&fn_dev->dev,
+		control->reg_40 = devm_kzalloc(&fn->dev,
 				sizeof(struct f54_ad_control_40), GFP_KERNEL);
 		if (!control->reg_40) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 		control->reg_40->length =
 				f54->query.number_of_sensing_frequencies;
-		control->reg_40->regs = devm_kzalloc(&fn_dev->dev,
+		control->reg_40->regs = devm_kzalloc(&fn->dev,
 			control->reg_40->length*
 			sizeof(struct f54_ad_control_40n),
 			GFP_KERNEL);
 		if (!control->reg_40->regs) {
-			dev_err(&fn_dev->dev, "Failed to allocate control registers.");
+			dev_err(&fn->dev, "Failed to allocate control registers.");
 			return -ENOMEM;
 		}
 
@@ -1584,21 +1531,13 @@ static int rmi_f54_initialize(struct rmi_function_dev *fn_dev)
 
 	mutex_init(&f54->control_mutex);
 
-	f54->fresh_or_stale = F54_REPORT_STALE;
-	
-	/* character devices for fast reports */
-	raw_data_char_dev_register(f54);
 	return retval;
 }
 
-static void set_report_size(struct rmi_function_dev *fn_dev)
+static void set_report_size(struct rmi_fn_54_data *data)
 {
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_device_platform_data *pdata;
-	struct rmi_fn_54_data *data = fn_dev->data;
 	u8 rx = data->query.num_of_rx_electrodes;
 	u8 tx = data->query.num_of_tx_electrodes;
-	pdata = to_rmi_platform_data(rmi_dev);
 	switch (data->report_type) {
 	case F54_8BIT_IMAGE:
 		data->report_size = rx * tx;
@@ -1609,13 +1548,6 @@ static void set_report_size(struct rmi_function_dev *fn_dev)
 	case F54_FULL_RAW_CAP:
 	case F54_FULL_RAW_CAP_RX_COUPLING_COMP:
 		data->report_size = 2 * rx * tx;
-		break;
-	case F54_16BIT_UNSIGNED_RAW_IMAGE:
-		/* We assign the report type sized base off of platform data because
-		 * it is difficult to know what the size will be, as it can change with
-		 * whether or not CDM4 is active or not. */
-
-		data->report_size = pdata->f54_direct_touch_report_size;
 		break;
 	case F54_HIGH_RESISTANCE:
 		data->report_size = RMI_54_HIGH_RESISTANCE_SIZE;
@@ -1647,23 +1579,18 @@ static void set_report_size(struct rmi_function_dev *fn_dev)
 	}
 }
 
-int rmi_f54_attention(struct rmi_function_dev *fn_dev,
+int rmi_f54_attention(struct rmi_function *fn,
 						unsigned long *irq_bits)
 {
-	struct rmi_driver *driver = fn_dev->rmi_dev->driver;
+	struct rmi_driver *driver = fn->rmi_dev->driver;
 	u8 fifo[2];
-	struct rmi_fn_54_data *data = fn_dev->data;
+	struct rmi_fn_54_data *data = fn->data;
 	int error = 0;
-	int retval = 0;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_device_platform_data *pdata;
-	int current_block_delay_us;
-	int current_read_delay_us;
 
-	set_report_size(fn_dev);
+	set_report_size(data);
 	if (data->report_size == 0) {
-		dev_err(&fn_dev->dev, "Invalid report size in %s (%d). This should never happen.\n",
-			__func__, data->report_size);
+		dev_err(&fn->dev, "Invalid report type set in %s. This should never happen.\n",
+			__func__);
 		error = -EINVAL;
 		goto error_exit;
 	}
@@ -1677,7 +1604,7 @@ int rmi_f54_attention(struct rmi_function_dev *fn_dev,
 			kfree(data->report_data);
 		data->report_data = kzalloc(data->report_size, GFP_KERNEL);
 		if (!data->report_data) {
-			dev_err(&fn_dev->dev, "Failed to allocate report_data.\n");
+			dev_err(&fn->dev, "Failed to allocate report_data.\n");
 			error = -ENOMEM;
 			data->bufsize = 0;
 			mutex_unlock(&data->data_mutex);
@@ -1686,53 +1613,24 @@ int rmi_f54_attention(struct rmi_function_dev *fn_dev,
 		data->bufsize = data->report_size;
 		mutex_unlock(&data->data_mutex);
 	}
-	dev_vdbg(&fn_dev->dev, "F54 Interrupt handler is running.\nSize: %d\n",
+	dev_vdbg(&fn->dev, "F54 Interrupt handler is running.\nSize: %d\n",
 		 data->report_size);
-
-	/*
-	** store current SPI delays
-	 */
-	pdata = to_rmi_platform_data(rmi_dev);
-	current_block_delay_us = pdata->spi_data.block_delay_us;
-	current_read_delay_us  = pdata->spi_data.read_delay_us;
-
-	pdata->spi_data.block_delay_us = 0;
-	pdata->spi_data.read_delay_us  = 0;
-
 	/* Write 0 to fifohi and fifolo. */
 	fifo[0] = 0;
 	fifo[1] = 0;
-	error = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.data_base_addr
+	error = rmi_write_block(fn->rmi_dev, fn->fd.data_base_addr
 				+ RMI_F54_FIFO_OFFSET, fifo,	sizeof(fifo));
 	if (error < 0)
-		dev_err(&fn_dev->dev, "Failed to write fifo to zero!\n");
+		dev_err(&fn->dev, "Failed to write fifo to zero!\n");
 	else
-		retval = rmi_read_block(fn_dev->rmi_dev,
-			fn_dev->fd.data_base_addr + RMI_F54_REPORT_DATA_OFFSET,
+		error = rmi_read_block(fn->rmi_dev,
+			fn->fd.data_base_addr + RMI_F54_REPORT_DATA_OFFSET,
 			data->report_data, data->report_size);
-	/*
-	** restore current SPI delays
-	*/
-	pdata->spi_data.block_delay_us = current_block_delay_us;
-	pdata->spi_data.read_delay_us  = current_read_delay_us;
-
-	data->fresh_or_stale = F54_REPORT_FRESH;
-	error = IDLE;
-
-	if (error < 0) {
-		dev_err(&fn_dev->dev, "F54 data read failed. Code: %d.\n", error);
-
-		data->fresh_or_stale = F54_REPORT_STALE;
-		error = IDLE;
-		goto error_exit;
-	}
-	// dev_dbg(&fn_dev->dev, "%s: The Report Size is %d",__func__,data->report_size);
-	if (retval != data->report_size) {
-		dev_dbg(&fn_dev->dev, "report size not correct!! %d != %d",retval, data->report_size);
+	if (error < 0)
+		dev_err(&fn->dev, "F54 data read failed. Code: %d.\n",
+					error);
+	else if (error != data->report_size) {
 		error = -EINVAL;
-	        data->fresh_or_stale = F54_REPORT_STALE;
-		error = IDLE;
-
 		goto error_exit;
 	}
 #if RAW_HEX
@@ -1785,10 +1683,10 @@ error_exit:
 	/* Turn back on other interupts, if it
 	 * appears that we turned them off. */
 	if (driver->restore_irq_mask) {
-		dev_dbg(&fn_dev->dev, "Restoring interupts!\n");
-		driver->restore_irq_mask(fn_dev->rmi_dev);
+		dev_dbg(&fn->dev, "Restoring interupts!\n");
+		driver->restore_irq_mask(fn->rmi_dev);
 	} else {
-		dev_err(&fn_dev->dev, "No way to restore interrupts!\n");
+		dev_err(&fn->dev, "No way to restore interrupts!\n");
 	}
 	data->status = error;
 	mutex_unlock(&data->status_mutex);
@@ -1801,34 +1699,33 @@ static void clear_status_worker(struct work_struct *work)
 {
 	struct rmi_fn_54_data *data = container_of(work,
 					struct rmi_fn_54_data, work);
-	struct rmi_function_dev *fn_dev = data->fn_dev;
-	struct rmi_driver *driver = fn_dev->rmi_dev->driver;
+	struct rmi_function *fn = data->fn;
+	struct rmi_driver *driver = fn->rmi_dev->driver;
 	u8 command;
 	int result;
 
 	mutex_lock(&data->status_mutex);
 	if (data->status == BUSY) {
-		pr_err("F54 Timeout Occured: Determining status.\n");
-		result = rmi_read_block(fn_dev->rmi_dev,
-					fn_dev->fd.command_base_addr,
-								&command, 1);
+		result = rmi_read_block(fn->rmi_dev,
+					fn->fd.command_base_addr,
+					&command, 1);
 		if (result < 0) {
-			dev_err(&fn_dev->dev, "Could not read get_report register from %#06x.\n",
-						fn_dev->fd.command_base_addr);
+			dev_err(&fn->dev, "Could not read get_report register from %#06x.\n",
+						fn->fd.command_base_addr);
 			data->status = -ETIMEDOUT;
 		} else {
 			if (command & GET_REPORT) {
-				dev_warn(&fn_dev->dev, "Report type unsupported!");
+				dev_warn(&fn->dev, "Report type unsupported!");
 				data->status = -EINVAL;
 			} else {
 				data->status = -ETIMEDOUT;
 			}
 		}
 		if (driver->restore_irq_mask) {
-			dev_dbg(&fn_dev->dev, "Restoring interupts!\n");
-			driver->restore_irq_mask(fn_dev->rmi_dev);
+			dev_dbg(&fn->dev, "Restoring interupts!\n");
+			driver->restore_irq_mask(fn->rmi_dev);
 		} else {
-			dev_err(&fn_dev->dev, "No way to restore interrupts!\n");
+			dev_err(&fn->dev, "No way to restore interrupts!\n");
 		}
 	}
 	mutex_unlock(&data->status_mutex);
@@ -1867,7 +1764,6 @@ static bool is_report_type_valid(enum f54_report_types reptype)
 	case F54_RX_OPENS2:
 	case F54_FULL_RAW_CAP:
 	case F54_FULL_RAW_CAP_RX_COUPLING_COMP:
-	case F54_16BIT_UNSIGNED_RAW_IMAGE:
 		return true;
 		break;
 	default:
@@ -1878,11 +1774,11 @@ static bool is_report_type_valid(enum f54_report_types reptype)
 /* SYSFS file show/store functions */
 static ssize_t rmi_fn_54_report_type_show(struct device *dev,
 				struct device_attribute *attr, char *buf) {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *f54;
 
-	fn_dev = to_rmi_function_dev(dev);
-	f54 = fn_dev->data;
+	fn = to_rmi_function(dev);
+	f54 = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%u\n", f54->report_type);
 }
@@ -1893,10 +1789,10 @@ static ssize_t rmi_fn_54_report_type_store(struct device *dev,
 	int result;
 	unsigned long val;
 	u8 data;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *instance_data;
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
 
 	/* need to convert the string data to an actual value */
 	result = strict_strtoul(buf, 10, &val);
@@ -1913,12 +1809,12 @@ static ssize_t rmi_fn_54_report_type_store(struct device *dev,
 		data = (u8)val;
 		/* Write the Report Type back to the first Block
 		 * Data registers (F54_AD_Data0). */
-		result = rmi_write_block(fn_dev->rmi_dev,
-				fn_dev->fd.data_base_addr, &data, 1);
+		result = rmi_write_block(fn->rmi_dev,
+				fn->fd.data_base_addr, &data, 1);
 		mutex_unlock(&instance_data->status_mutex);
 		if (result < 0) {
 			dev_err(dev, "%s : Could not write report type to 0x%x\n",
-				__func__, fn_dev->fd.data_base_addr);
+				__func__, fn->fd.data_base_addr);
 			return result;
 		}
 		return count;
@@ -1935,13 +1831,13 @@ static ssize_t rmi_fn_54_get_report_store(struct device *dev,
 				   const char *buf, size_t count) {
 	unsigned long val;
 	int error, result;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *instance_data;
 	struct rmi_driver *driver;
 	u8 command;
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
-	driver = fn_dev->rmi_dev->driver;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
+	driver = fn->rmi_dev->driver;
 
 	/* need to convert the string data to an actual value */
 	error = strict_strtoul(buf, 10, &val);
@@ -1966,8 +1862,6 @@ static ssize_t rmi_fn_54_get_report_store(struct device *dev,
 		if (instance_data->status != BUSY) {
 			dev_err(dev, "F54 status is in an abnormal state: 0x%x",
 							instance_data->status);
-		} else {
-			dev_info(dev, "F54 status is currently busy: Ignoring request");
 		}
 		mutex_unlock(&instance_data->status_mutex);
 		return count;
@@ -1979,8 +1873,8 @@ static ssize_t rmi_fn_54_get_report_store(struct device *dev,
 	 */
 	dev_dbg(dev, "Storing and overriding interupts\n");
 	if (driver->store_irq_mask)
-		driver->store_irq_mask(fn_dev->rmi_dev,
-					fn_dev->irq_mask);
+		driver->store_irq_mask(fn->rmi_dev,
+					fn->irq_mask);
 	else
 		dev_err(dev, "No way to store interupts!\n");
 	instance_data->status = BUSY;
@@ -1989,28 +1883,20 @@ static ssize_t rmi_fn_54_get_report_store(struct device *dev,
 	 * higher than absolutely necessary. Should be removed once issue is
 	 * resolved in firmware. */
 
-	mdelay(1);
-
-	dev_dbg(dev, "%s: actually writing to RMI\n", __func__);
-
+	mdelay(2);
 
 	/* Write the command to the command register */
-	result = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.command_base_addr,
+	result = rmi_write_block(fn->rmi_dev, fn->fd.command_base_addr,
 						&command, 1);
-
-	/* Mark the current data buffer stale -- we requested a new one */
-	instance_data->fresh_or_stale = F54_REPORT_STALE;
-
-
 	mutex_unlock(&instance_data->status_mutex);
 	if (result < 0) {
 		dev_err(dev, "%s : Could not write command to 0x%x\n",
-				__func__, fn_dev->fd.command_base_addr);
+				__func__, fn->fd.command_base_addr);
 		return result;
 	}
 #if F54_WATCHDOG
 	/* start watchdog timer */
-	hrtimer_start(&instance_data->watchdog, ktime_set(4, 0),
+	hrtimer_start(&instance_data->watchdog, ktime_set(1, 0),
 							HRTIMER_MODE_REL);
 #endif
 	return count;
@@ -2021,14 +1907,14 @@ static ssize_t rmi_fn_54_force_cal_store(struct device *dev,
 				   const char *buf, size_t count) {
 	unsigned long val;
 	int error, result;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *instance_data;
 	struct rmi_driver *driver;
 	u8 command;
 
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
-	driver = fn_dev->rmi_dev->driver;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
+	driver = fn->rmi_dev->driver;
 
 	/* need to convert the string data to an actual value */
 	error = strict_strtoul(buf, 10, &val);
@@ -2043,11 +1929,11 @@ static ssize_t rmi_fn_54_force_cal_store(struct device *dev,
 	if (instance_data->status == BUSY)
 		return -EBUSY;
 	/* Write the command to the command register */
-	result = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.command_base_addr,
+	result = rmi_write_block(fn->rmi_dev, fn->fd.command_base_addr,
 						&command, 1);
 	if (result < 0) {
 		dev_err(dev, "%s : Could not write command to 0x%x\n",
-				__func__, fn_dev->fd.command_base_addr);
+				__func__, fn->fd.command_base_addr);
 		return result;
 	}
 	return count;
@@ -2055,11 +1941,11 @@ static ssize_t rmi_fn_54_force_cal_store(struct device *dev,
 
 static ssize_t rmi_fn_54_status_show(struct device *dev,
 				struct device_attribute *attr, char *buf) {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *instance_data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%d\n", instance_data->status);
 }
@@ -2090,11 +1976,11 @@ simple_show_union_struct_unsigned(query, number_of_sensing_frequencies)
 
 static ssize_t rmi_fn_54_no_auto_cal_show(struct device *dev,
 				struct device_attribute *attr, char *buf) {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 				data->no_auto_cal ? 1 : 0);
@@ -2106,11 +1992,11 @@ static ssize_t rmi_fn_54_no_auto_cal_store(struct device *dev,
 	int result;
 	unsigned long val;
 	u8 data;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *instance_data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
 
 	/* need to convert the string data to an actual value */
 	result = strict_strtoul(buf, 10, &val);
@@ -2122,11 +2008,11 @@ static ssize_t rmi_fn_54_no_auto_cal_store(struct device *dev,
 	if (val > 1)
 		return -EINVAL;
 	/* Read current control values */
-	result = rmi_read_block(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_read_block(fn->rmi_dev, fn->fd.control_base_addr,
 			   &data, 1);
 	if (result < 0) {
 		dev_err(dev, "%s : Could not read control base address to 0x%x\n",
-		       __func__, fn_dev->fd.control_base_addr);
+		       __func__, fn->fd.control_base_addr);
 		return result;
 	}
 
@@ -2137,11 +2023,11 @@ static ssize_t rmi_fn_54_no_auto_cal_store(struct device *dev,
 	/* Write the control back to the control register (F54_AD_Ctrl0)
 	 * Ignores everything but bit 0 */
 	data = (data & ~NO_AUTO_CAL_MASK) | (val & NO_AUTO_CAL_MASK);
-	result = rmi_write_block(fn_dev->rmi_dev, fn_dev->fd.control_base_addr,
+	result = rmi_write_block(fn->rmi_dev, fn->fd.control_base_addr,
 				 &data, 1);
 	if (result < 0) {
 		dev_err(dev, "%s : Could not write control to 0x%x\n",
-		       __func__, fn_dev->fd.control_base_addr);
+		       __func__, fn->fd.control_base_addr);
 		return result;
 	}
 	/* update our internal representation iff the write succeeds */
@@ -2151,24 +2037,24 @@ static ssize_t rmi_fn_54_no_auto_cal_store(struct device *dev,
 
 static ssize_t rmi_fn_54_fifoindex_show(struct device *dev,
 				  struct device_attribute *attr, char *buf) {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *instance_data;
 	struct rmi_driver *driver;
 	u8 temp_buf[2];
 	int retval;
 
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
-	driver = fn_dev->rmi_dev->driver;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
+	driver = fn->rmi_dev->driver;
 
 	/* Read fifoindex from device */
-	retval = rmi_read_block(fn_dev->rmi_dev,
-				fn_dev->fd.data_base_addr + RMI_F54_FIFO_OFFSET,
+	retval = rmi_read_block(fn->rmi_dev,
+				fn->fd.data_base_addr + RMI_F54_FIFO_OFFSET,
 				temp_buf, ARRAY_SIZE(temp_buf));
 
 	if (retval < 0) {
 		dev_err(dev, "Could not read fifoindex from 0x%04x\n",
-		       fn_dev->fd.data_base_addr + RMI_F54_FIFO_OFFSET);
+		       fn->fd.data_base_addr + RMI_F54_FIFO_OFFSET);
 		return retval;
 	}
 	instance_data->fifoindex = batohs(temp_buf);
@@ -2182,11 +2068,11 @@ static ssize_t rmi_fn_54_fifoindex_store(struct device *dev,
 	int error;
 	unsigned long val;
 	u8 data[2];
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *instance_data;
 
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
 
 	/* need to convert the string data to an actual value */
 	error = strict_strtoul(buf, 10, &val);
@@ -2199,13 +2085,13 @@ static ssize_t rmi_fn_54_fifoindex_store(struct device *dev,
 	/* Write the FifoIndex back to the first data registers. */
 	hstoba(data, (u16)val);
 
-	error = rmi_write_block(fn_dev->rmi_dev,
-				fn_dev->fd.data_base_addr + RMI_F54_FIFO_OFFSET,
+	error = rmi_write_block(fn->rmi_dev,
+				fn->fd.data_base_addr + RMI_F54_FIFO_OFFSET,
 				data, ARRAY_SIZE(data));
 
 	if (error < 0) {
 		dev_err(dev, "Could not write fifoindex to 0x%x\n",
-		       fn_dev->fd.data_base_addr + RMI_F54_FIFO_OFFSET);
+		       fn->fd.data_base_addr + RMI_F54_FIFO_OFFSET);
 		return error;
 	}
 	return count;
@@ -2217,14 +2103,12 @@ static ssize_t rmi_fn_54_data_read(struct file *data_file, struct kobject *kobj,
 				char *buf, loff_t pos, size_t count)
 {
 	struct device *dev;
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *instance_data;
 
-	int i;
-
 	dev = container_of(kobj, struct device, kobj);
-	fn_dev = to_rmi_function_dev(dev);
-	instance_data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	instance_data = fn->data;
 	mutex_lock(&instance_data->data_mutex);
 	if (count < instance_data->report_size) {
 		dev_err(dev,  "F54 report size too large for buffer: %d. Need at least: %d for Report type: %d.\n",
@@ -2233,32 +2117,6 @@ static ssize_t rmi_fn_54_data_read(struct file *data_file, struct kobject *kobj,
 		mutex_unlock(&instance_data->data_mutex);
 		return -EINVAL;
 	}
-
-	for (i=0; i< RMI_F54_WATCHDOG_TIMEOUT_MSEC; i += RMI_F54_STEP_MSEC) {
-
-	  if (instance_data->report_data
-	      &&
-	      (instance_data->fresh_or_stale == F54_REPORT_FRESH)
-	      ) {
-	    /* Copy data from instance_data to buffer */
-
-	    memcpy(buf, instance_data->report_data,
-	  	   instance_data->report_size);
-
-	    instance_data->fresh_or_stale = F54_REPORT_STALE;
-
-	    mutex_unlock(&instance_data->data_mutex);
-
-	    dev_dbg(dev, "%s: Presumably successful.", __func__);
-
-	    return instance_data->report_size;
-	  }
-
-	  mutex_unlock(&instance_data->data_mutex);
-	  msleep(RMI_F54_STEP_MSEC);
-
-	} /* bottom of the step-wait-step loop */
-	
 	if (instance_data->report_data) {
 		/* Copy data from instance_data to buffer */
 		memcpy(buf, instance_data->report_data,
@@ -2284,17 +2142,17 @@ show_repeated_union_struct_unsigned(control, reg_17, disable)
 static ssize_t rmi_fn_54_burst_count_show(struct device *dev,
 					struct device_attribute *attr,
 					char *buf) {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_fn_54_data *data;
 	int result, size = 0;
 	char *temp;
 	int i;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	mutex_lock(&data->control_mutex);
 	/* Read current control values */
-	result = rmi_read_block(fn_dev->rmi_dev, data->control.reg_17->address,
+	result = rmi_read_block(fn->rmi_dev, data->control.reg_17->address,
 			(u8 *) data->control.reg_17->regs,
 			data->control.reg_17->length * sizeof(u8));
 	if (result < 0) {
@@ -2302,7 +2160,7 @@ static ssize_t rmi_fn_54_burst_count_show(struct device *dev,
 					data->control.reg_17->address);
 	}
 
-	result = rmi_read_block(fn_dev->rmi_dev, data->control.reg_18->address,
+	result = rmi_read_block(fn->rmi_dev, data->control.reg_18->address,
 			(u8 *)data->control.reg_18->regs,
 			data->control.reg_18->length * sizeof(u8));
 	if (result < 0) {
@@ -2389,605 +2247,3 @@ MODULE_AUTHOR("Daniel Rosenberg <daniel.rosenberg@synaptics.com>");
 MODULE_DESCRIPTION("RMI F54 module");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(RMI_DRIVER_VERSION);
-
-/*
-** Direct-Touch control files block diagram
-**
-**
-**
-**             -------------------------------
-**             |                             |
-**             |                             |
-**             |                             |
-**             |       Touch Sensor          |
-**             |          Plate              |
-**             |                             |
-**             |                             |
-**             |                             |
-**             ---------------||--------------
-**                            ||
-**                            ||
-**                            ||
-**             ---------------||--------------
-**             |                             |
-**             |                             |
-**             |                             |
-**             |       Synaptics 1321        |
-**             |         or 1322             |
-**             |                             |
-**             |                             |
-**             |                             |
-**             ---------------||--------------
-**                            ||
-**                            ||
-**                            ||
-**   -------------------------||--------------------------
-**   |           fn11/mode   / \\  fn54/get_report == 0  |
-**   |            == 0      /   \\ Do Nothing            |
-**   |           then       |   ||                       |
-**   |           read       |   || fn54/get_report == 1  |
-**   |           interrupts |   || Get Image             |
-**   |                      |   || (resets to 0          |
-**   |            == 1      |   ||  after 1 image)       |
-**   |           then       |   ||                       |
-**   |           read       |   ||                       |
-**   |           from       |   ||                       |
-**   |           /dev/      |   ||                       |
-**   |           rawtouch00 |   ||                       |
-**   |           (for       |   ||                       |
-**   |            finger   /    |\                       |
-**   |            data)   /      \\                      |
-**   |                   |        \\                     |
-**   |  fn11/mode == 1   |        ||                     |
-**   |  accept finger    |        ||                     |
-**   |  events From      |        ||                     |
-**   |  Direct Touch     |        ||                     |
-**   |  Daemon           |        ||                     |
-**   |  (*)              |        ||                     |
-**   |               fn11/mode    ||                     |
-**   |                  =?= 0     ||                     |
-**   |                   |        ||                     |
-**   |                   |        ||                     |
-**   |                  \ /      \  /                    |
-**   |             ------|--     -\/------               |
-**   |             | FN11  |     | FN54  |               |
-**   |             |  \ /  |     |       |               |
-**   |        /=====   X   |     |       |               |
-**   |       /|    |  / \  |     |       |               |
-**   |       EE    |       |     |       |               |
-**   |       EE    ----/\---     --||-----               |
-**   |       EE       /  \         ||                    |
-**   |       EE        ||          ||                    |
-**   |       EE     fn11/mode      ||                    |
-**   |       EE       =?= 1        ||                    |
-**   |       EE        ||          ||                    |
-**   |       EE        ||          ||                    |
-**   |       EE        ||          ||                    |
-**   |       EE        ||          ||                    |
-**   |       EE        ||          ||                    |
-**   |       EE        ||          || make image         |
-**   |       EE        ||          || available in       |
-**   |       EE     read from      || /dev/rawsensor00   |
-**   |       EE     /dev/rawtouch00|| (fast)             |
-**   |       EE        ||          ||                    |
-**   |       EE        ||          ||  (**)              |
-**   |       EE        ||          ||                    |
-**   |       EE        ||         \  /                   |
-**   |       EE    ____||__________\/____                |
-**   |       EE    |                     |               |
-**   |       EE    |                     |               |
-**   |       EE    |                     |               |
-**   |       EE    |                     |               |
-**   |       EE    |     SYNAPTICS       |               |
-**   |       EE    |      DIRECT         |               |
-**   |       EE    |       TOUCH         |               |
-**   |       EE    |     Executable      |               |
-**   |       EE    |                     |               |
-**   |       EE    |                     |               |
-**   |       EE    ______________________                |
-**   |       EE                                          |
-**   |      \  /                                         |
-**   |    ---\/----------------------------------        |
-**   |    |         ANDROID INPUT STREAM        |        |
-**   |    ---------------------------------------        |
-**   |                                                   |
-**   |                                                   |
-**   |                 ANDROID HOST                      |
-**   |                                                   |
-**   |                                                   |
-**   |                                                   |
-**   |                                                   |
-**   -----------------------------------------------------
-**
-**   (*) fn11/mode file:controls whether or not fn11 finger
-**       reports come from the
-**       sensor chip (==0)
-**       or, Direct_touch executable (==1)
-**       use
-**       cat /sys/devices/sensor00/fn11/mode
-**       to see current value
-**
-**       use
-**       echo 0 > /sys/devices/sensor00/fn11/mode
-**       to set finger report source to the sensor chip
-**
-**       echo 1 > /sys/devices/sensor00/fn11/mode
-**       to set finger report source to direct touch daemon
-**
-**
-**
-**
-**    (**) fn54/user_data file: controls whether images are transferred from
-**         the driver to the Direct touch executable through
-**         /sys/devices/sensor00/fn54/rep_data or
-**         /dev/rawsensor00
-**         files.
-**         /dev/rawsensor00 is faster, but uses more platform-specific stuff
-**
-**         cat /sys/devices/sensor00/fn54/user_data shows current value
-**
-**         echo 0x0 > /sys/devices/sensor00/fn54/user_data
-**         sets transfer source file to /sys/devices/sensor00/fn54/rep_data
-**
-**         echo 0x1 > /sys/devices/sensor00/fn54/user_data
-**         sets transfer source file to /dev/rawsensor00
-*/
-
-
-static ssize_t SynSens_char_dev_read(struct file *, char __user *,
-				     size_t, loff_t *);
-static ssize_t SynSens_char_dev_write(struct file *, const char __user *,
-				      size_t, loff_t *);
-static int     SynSens_char_dev_open(struct inode *, struct file *);
-static int     SynSens_char_dev_release(struct inode *, struct file *);
-
-
-static const struct file_operations SynSens_char_dev_fops = {
-	.owner =    THIS_MODULE,
-	.read =     SynSens_char_dev_read,
-	.write =    SynSens_char_dev_write,
-	.open =     SynSens_char_dev_open,
-	.release =  SynSens_char_dev_release,
-};
-
-/*
- * SynSens_char_devnode - return device permission
- *
- * @dev: char device structure
- * @mode: file permission
- *
- */
-static char *SynSens_char_devnode(struct device *dev, mode_t *mode)
-{
-	if (!mode)
-		return NULL;
-	/* rmi** */
-	/**mode = 0666*/
-	*mode = (S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
-	dev_dbg(dev, "%s: setting mode of %s to 0x%08x\n", __func__,
-		RAW_IMAGE_CHAR_DEVICE_NAME, *mode);
-	return kasprintf(GFP_KERNEL, "%s", dev_name(dev));
-}
-
-
-
-/*store dynamically allocated major number of char device*/
-static int rmi_char_dev_major_num;
-
-
-/*
- * raw_data_char_dev_register - register char device
- * called from init
- *
- * @phy: a pointer to an rmi_phys_devices structure
- *
- * @return: zero if suceeds
- */
-static int
-raw_data_char_dev_register(struct rmi_fn_54_data *rmi_f54_instance_data)
-{
-	dev_t dev_no;
-	int err;
-	int result;
-	struct device *device_ptr;
-	struct raw_data_char_dev *char_dev;
-
-	if (!rmi_f54_instance_data) {
-		dev_err(&rmi_f54_instance_data->fn_dev->dev,"%s: No RMI F54 data structure instance\n",
-			__func__);
-	}
-
-	if (rmi_char_dev_major_num) {
-		dev_no = MKDEV(rmi_char_dev_major_num, 0);
-		result = register_chrdev_region(dev_no, 1,
-						RAW_IMAGE_CHAR_DEVICE_NAME);
-	} else {
-		result = alloc_chrdev_region(&dev_no, 0, 1,
-					     RAW_IMAGE_CHAR_DEVICE_NAME);
-		/* let kernel allocate a major for us */
-		rmi_char_dev_major_num = MAJOR(dev_no);
-	}
-	pr_info("%s: Major number of rmi_char_dev: %d\n",
-		__func__,  rmi_char_dev_major_num);
-
-	if (result < 0)
-		return result;
-
-	/* allocate device space */
-	char_dev = kzalloc(sizeof(struct raw_data_char_dev), GFP_KERNEL);
-	if (!char_dev) {
-		dev_err(&rmi_f54_instance_data->fn_dev->dev,
-				"%s: Failed to allocate rmi_char_dev.\n", __func__);
-		/* unregister the char device region */
-		__unregister_chrdev(rmi_char_dev_major_num, MINOR(dev_no), 1,
-				    RAW_IMAGE_CHAR_DEVICE_NAME);
-		return -ENOMEM;
-	}
-
-	mutex_init(&char_dev->mutex_file_op);
-
-	rmi_f54_instance_data->raw_data_feed = char_dev;
-
-
-	/* initialize the device */
-	cdev_init(&char_dev->raw_data_dev, &SynSens_char_dev_fops);
-
-
-
-	char_dev->raw_data_dev.owner = THIS_MODULE;
-
-
-	/* tell the linux kernel to add the device */
-	err = cdev_add(&char_dev->raw_data_dev, dev_no, 1);
-
-	dev_dbg(&rmi_f54_instance_data->fn_dev->dev, "%s: cdev_add returned with code= %d\n", __func__, err);
-
-	if (err) {
-		dev_err(&rmi_f54_instance_data->fn_dev->dev,"%s: Error %d adding raw_data_char_dev.\n",
-			__func__, err);
-		return err;
-	}
-
-	/* create device node */
-	rmi_f54_instance_data->raw_data_feed->raw_data_device_class =
-		class_create(THIS_MODULE, RAW_IMAGE_CHAR_DEVICE_NAME);
-
-	if (IS_ERR(rmi_f54_instance_data->raw_data_feed->
-		       raw_data_device_class)) {
-
-		dev_err(&rmi_f54_instance_data->fn_dev->dev, "%s: Failed to create /dev/%s.\n",
-				__func__, RAW_IMAGE_CHAR_DEVICE_NAME);
-
-		return -ENODEV;
-	}
-
-	/* setup permission */
-	rmi_f54_instance_data->raw_data_feed->raw_data_device_class->devnode =
-		SynSens_char_devnode;
-
-	/* class creation */
-	device_ptr = device_create(
-		rmi_f54_instance_data->raw_data_feed->
-		raw_data_device_class,
-		NULL, dev_no, NULL,
-		RAW_IMAGE_CHAR_DEVICE_NAME"%d",
-		MINOR(dev_no));
-
-	if (IS_ERR(device_ptr)) {
-	  dev_err((const struct device *)&rmi_f54_instance_data->raw_data_feed->raw_data_dev.dev,
-			"Failed to create raw_data_read device.\n");
-
-		return -ENODEV;
-	}
-
-	rmi_f54_instance_data->raw_data_feed->my_parents_instance_data =
-		rmi_f54_instance_data;
-
-	return 0;
-}
-
-/* file operations for SynSens char device */
-
-/* unsigned char junk_char_buf[2048]; */
-
-static ssize_t SynSens_char_dev_read(struct file *filp, char __user *buf,
-				     size_t count, loff_t *f_pos)
-{
-	struct rmi_fn_54_data *my_instance_data = NULL;
-	struct raw_data_char_dev *char_dev_container = NULL;
-	ssize_t ret_value  = 0;
-
-	int min_usecs = RMI_F54_STEP_MSEC * 1000 / 4;
-	int max_usecs = RMI_F54_STEP_MSEC * 1000 / 2;
-	unsigned char *buffer_to_copy_to_output;
-	long int curr_sleep = 0;
-	u8 command = 1;
-
-
-	if (!filp) {
-		pr_info("%s: called with NULL file pointer\n", __func__);
-		return -EINVAL;
-	}
-	char_dev_container = filp->private_data;
-
-	if (!char_dev_container) {
-		pr_info("%s: called with NULL private_data\n", __func__);
-		return -EINVAL;
-	}
-
-	my_instance_data = char_dev_container->my_parents_instance_data;
-
-	if (count == 0) {
-		pr_info("%s: count = %d -- no space to copy output to!!!\n",
-			__func__, count);
-		return -ENOMEM;
-	}
-
-	if (count < my_instance_data->report_size) {
-		pr_info("%s: count = %d but need %d bytes -- not enough space\n",
-			__func__, count, my_instance_data->report_size);
-		return -ENOMEM;
-	}
-	
-	/* get the next report, unless special report type */
-	if (my_instance_data->report_type != F54_16BIT_UNSIGNED_RAW_IMAGE) {
-		/* Write the command to the command register */
-		ret_value = rmi_write_block(my_instance_data->fn_dev->rmi_dev, 
-					my_instance_data->fn_dev->fd.command_base_addr,
-					&command, 1);
-		if (ret_value < 0) {
-			pr_info("%s : Could not write command to 0x%x\n",
-					__func__, my_instance_data->fn_dev->fd.command_base_addr);
-			return ret_value;
-		}
-		/* Mark the current data buffer stale -- we requested a new one */
-		my_instance_data->fresh_or_stale = F54_REPORT_STALE;
-	}
-
-	/*
-	** if the data is not ready, wait until it is...
-	*/
-
-	while (((!my_instance_data->report_data)
-		||
-		(my_instance_data->fresh_or_stale != F54_REPORT_FRESH)
-		) 
-	       && 
-	       (curr_sleep < 3000000)) { /* 3 seconds is below the threshold of kernel watchdog */
-	        /*
-		** We stay in this loop as long as:
-		** there is no fresh report   (the current one is already read)
-		** or, there is no report at all
-		** but, we leave the loop if the
-		** total wait time is 3 seconds
-		** so that we do not trigger a watchdog timeout
-		** in this case, we send the stale frame over
-		** again, no real harm done.
-		*/
-
-		usleep_range(min_usecs, max_usecs);
-
-		curr_sleep += (max_usecs + min_usecs)/2;
-
-		if (curr_sleep > RMI_F54_WATCHDOG_TIMEOUT_MSEC*1000) {
-
-			/*
-			** no -EFAULT here,
-			** just 0 stating that 0 bytes were copied
-			** not even return anymore -- low_power mode requires we
-			** wait until the chip wakes up
-			*/
-			/* return 0; */
-		        /*
-			**  if we are here, it means that the chip
-			** went into doze mode. Just increase the sleep 
-			** duration so that we do not wake up the
-			** reading process (direct touch daemon)
-			** too often -- that would cost cpu cycles
-			** and battery power
-			*/
-		        min_usecs = 30000;
-		        max_usecs = 40000;
-		}
-	}
-	/*
-	** pr_info("   wait over\n");
-	*/
-	/*
-	** decide whether we need to send image buffer or config buffer
-	*/
-	buffer_to_copy_to_output = my_instance_data->report_data;
-
-	/*
-	** mutex_lock(&(my_instance_data->raw_data_feed->mutex_file_op));
-	*/
-	if (curr_sleep >= 3000000) {
-	  pr_info("#");
-	}
-	ret_value = copy_to_user((void __user *)buf,
-				 (const void *)buffer_to_copy_to_output,
-				 my_instance_data->report_size);
-
-	*f_pos += my_instance_data->report_size;
-
-	my_instance_data->fresh_or_stale = F54_REPORT_STALE;
-	memset(my_instance_data->report_data,
-	       '\0',
-	       my_instance_data->report_size);
-	/*
-	** mutex_unlock(&(my_instance_data->raw_data_feed->mutex_file_op));
-	*/
-
-	/*
-	 * release the wake_lock.  the DT daemon will know what to do.
-	 */
-	return my_instance_data->report_size - ret_value;
-}
-
-#define F54_REPORT_STOP		0
-#define F54_REPORT_START	1
-#define F54_REPORT_SET_TYPE	2
-
-/*
- * SynSens_char_dev_write: - use to write data into RMI stream
- * First byte is indication of parameter to change
- *
- * @filep : file structure for write
- * @buf: user-level buffer pointer contains data to be written
- * @count: number of byte be be written
- * @f_pos: offset (starting register address)
- *
- * @return number of bytes written from user buffer (buf) if succeeds
- *         negative number if error occurs.
- */
-static ssize_t SynSens_char_dev_write(struct file *filp, const char __user *buf,
-				      size_t count, loff_t *f_pos)
-{
-	struct rmi_fn_54_data *f54 = NULL;
-	struct raw_data_char_dev *char_dev_container = NULL;
-	struct rmi_function_dev *fn_dev;
-	struct rmi_driver *driver;
-	struct rmi_driver_data *driver_data;
-	unsigned char tmpbuf[128];
-	char command;
-	u8 val;
-	int retval = 0;
-	pr_info("%s: Write called.\n", __func__);
-	if (!filp) {
-		pr_err("%s: called with NULL file pointer\n", __func__);
-		return -EINVAL;
-	}
-	char_dev_container = filp->private_data;
-
-	if (!char_dev_container) {
-		pr_err("%s: called with NULL private_data\n", __func__);
-		return -EINVAL;
-	}
-	f54 = char_dev_container->my_parents_instance_data;
-	fn_dev = f54->fn_dev;
-	driver = fn_dev->rmi_dev->driver;
-	driver_data = dev_get_drvdata(&fn_dev->rmi_dev->dev);
-	memset(tmpbuf, '\0', 128);
-	retval = copy_from_user(tmpbuf, buf, count > 128 ? 128 : count);
-	command = tmpbuf[0];
-	switch(command) {
-	case F54_REPORT_SET_TYPE:
-		val = (u8)tmpbuf[1];
-		if (!is_report_type_valid(val)) {
-			dev_err(&fn_dev->dev, "%s : Report type %d is invalid.\n",
-						__func__, val);
-			return -EINVAL;
-		}
-		mutex_lock(&f54->status_mutex);
-		if (f54->status != BUSY) {
-			pr_info("%s:report type: %d\n", __func__,val);
-			f54->report_type = (enum f54_report_types)val;
-			/* Write the Report Type back to the first Block
-			 * Data registers (F54_AD_Data0). */
-			 
-			retval = rmi_write_block(fn_dev->rmi_dev,
-					fn_dev->fd.data_base_addr, &val, 1);
-			mutex_unlock(&f54->status_mutex);
-			if (retval < 0) {
-				dev_err(&fn_dev->dev, "%s : Could not write report type to 0x%x\n",
-					__func__, fn_dev->fd.data_base_addr);
-				return retval;
-			}
-			return count;
-		} else {
-			dev_err(&fn_dev->dev, "%s : Report type cannot be changed in the middle of command.\n",
-				__func__);
-			mutex_unlock(&f54->status_mutex);
-			return -EINVAL;
-		}
-	case F54_REPORT_START:
-		/* Overwrite and store interrupts */
-		if (driver->store_irq_mask)
-			driver->store_irq_mask(fn_dev->rmi_dev, fn_dev->irq_mask);
-	case F54_REPORT_STOP:
-		/* Turn back on other interupts, if it
-		 * appears that we turned them off. */
-		if (driver_data->irq_stored && driver->restore_irq_mask) {
-			dev_dbg(&fn_dev->dev, "Restoring interupts!\n");
-			driver->restore_irq_mask(fn_dev->rmi_dev);
-		}
-	}
-	return count;
-}
-
-
-/*
- * SynSens_char_dev_open: - get a new handle for reading raw Touch Sensor images
- * @inp : inode struture
- * @filp: file structure for read/write
- *
- * @return 0 if succeeds
- */
-static int SynSens_char_dev_open(struct inode *inp, struct file *filp)
-{
-	int ret_value = 0;
-	/* store the device pointer to file structure */
-
-	struct raw_data_char_dev *my_dev ;
-
-	pr_info("%s: rmi: synaptics: user space app opened the character device\n", __func__);
-
-	my_dev = container_of(inp->i_cdev,
-			      struct raw_data_char_dev,
-			      raw_data_dev);
-
-
-	filp->private_data = my_dev;
-
-	return ret_value;
-}
-
-/*
- *  SynSens_char_dev_release: - release an existing handle
- *  @inp: inode structure
- *  @filp: file structure for read/write
- *
- *  @return 0 if succeeds
- */
-static int SynSens_char_dev_release(struct inode *inp, struct file *filp)
-{
-	return 0;
-}
-
-
-/*
- * SynSens_char_dev_clean_up - release memory or unregister driver
- * @SynSens_char_dev: SynSens_char_dev structure
- *
- */
-static void SynSens_char_dev_clean_up(struct raw_data_char_dev *char_dev,
-				      struct class *char_device_class)
-{
-	int junk; /*
-		  ** placeholder for later
-		  */
-	junk = 0;
-	return;
-}
-
-
-
-/* SynSens_char_dev_unregister - unregister char device (called from up-level)
- *
- * @phys: pointer to an rmi_phys_device structure
- */
-
-void SynSens_char_dev_unregister(struct raw_data_char_dev *raw_char_dev)
-{
-	/* clean up */
-	if (raw_char_dev)
-		SynSens_char_dev_clean_up(raw_char_dev,
-					  raw_char_dev->raw_data_device_class);
-}
-EXPORT_SYMBOL(SynSens_char_dev_unregister);
-
-
-
-MODULE_AUTHOR("Synaptics, Inc.");
-MODULE_DESCRIPTION("RMI4 Char Device");
-MODULE_LICENSE("GPL");

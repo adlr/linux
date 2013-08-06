@@ -1,4 +1,4 @@
-/*
+Fphys/*
  * Copyright (c) 2012 Synaptics Incorporated
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -13,6 +13,7 @@
 #include "rmi_driver.h"
 
 #define QUERY_BASE_INDEX 1
+#define NAME_BUFFER_SIZE 256
 #define FUNCTION_NUMBER 0x17
 
 union f17_device_query {
@@ -177,11 +178,11 @@ static ssize_t f17_rezero_show(struct device *dev,
 				struct device_attribute *attr,
 				char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_f17_device_data *f17;
 
-	fn_dev = to_rmi_function_dev(dev);
-	f17 = fn_dev->data;
+	fn = to_rmi_function(dev);
+	f17 = fn->data;
 
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			f17->commands.rezero);
@@ -193,13 +194,13 @@ static ssize_t f17_rezero_store(struct device *dev,
 					 const char *buf,
 					 size_t count)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct rmi_f17_device_data *data;
 	unsigned int new_value;
 	int len;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 	len = sscanf(buf, "%u", &new_value);
 	if (new_value != 0 && new_value != 1) {
 		dev_err(dev,
@@ -208,12 +209,12 @@ static ssize_t f17_rezero_store(struct device *dev,
 		return -EINVAL;
 	}
 	data->commands.rezero = new_value;
-	len = rmi_write(fn_dev->rmi_dev, fn_dev->fd.command_base_addr,
+	len = rmi_write(fn->rmi_dev, fn->fd.command_base_addr,
 		data->commands.rezero);
 
 	if (len < 0) {
 		dev_err(dev, "%s : Could not write rezero to 0x%x\n",
-				__func__, fn_dev->fd.command_base_addr);
+				__func__, fn->fd.command_base_addr);
 		return -EINVAL;
 	}
 	return count;
@@ -235,32 +236,32 @@ int f17_read_control_parameters(struct rmi_device *rmi_dev,
 	return retval;
 }
 
-static int f17_alloc_memory(struct rmi_function_dev *fn_dev)
+static int f17_alloc_memory(struct rmi_function *fn)
 {
 	struct rmi_f17_device_data *f17;
 	int retval;
 	int size;
 
-	f17 = devm_kzalloc(&fn_dev->dev, sizeof(struct rmi_f17_device_data),
+	f17 = devm_kzalloc(&fn->dev, sizeof(struct rmi_f17_device_data),
 		GFP_KERNEL);
 	if (!f17) {
-		dev_err(&fn_dev->dev, "Failed to allocate function data.\n");
+		dev_err(&fn->dev, "Failed to allocate function data.\n");
 		return -ENOMEM;
 	}
-	fn_dev->data = f17;
+	fn->data = f17;
 
-	retval = rmi_read_block(fn_dev->rmi_dev, fn_dev->fd.query_base_addr,
+	retval = rmi_read_block(fn->rmi_dev, fn->fd.query_base_addr,
 				f17->query.regs, sizeof(f17->query.regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Failed to read query register.\n");
+		dev_err(&fn->dev, "Failed to read query register.\n");
 		return retval;
 	}
 
 	size = (f17->query.number_of_sticks+1)*
 			sizeof(struct rmi_f17_stick_data);
-	f17->sticks = devm_kzalloc(&fn_dev->dev, size, GFP_KERNEL);
+	f17->sticks = devm_kzalloc(&fn->dev, size, GFP_KERNEL);
 	if (!f17->sticks) {
-		dev_err(&fn_dev->dev, "Failed to allocate per stick data.\n");
+		dev_err(&fn->dev, "Failed to allocate per stick data.\n");
 		return -ENOMEM;
 	}
 
@@ -338,37 +339,37 @@ static int f17_init_stick(struct rmi_device *rmi_dev,
 	return retval;
 }
 
-static int f17_initialize(struct rmi_function_dev *fn_dev)
+static int f17_initialize(struct rmi_function *fn)
 {
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_f17_device_data *f17 = fn_dev->data;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_f17_device_data *f17 = fn->data;
 	int i;
 	int retval;
-	u16 next_query_reg = fn_dev->fd.query_base_addr;
-	u16 next_data_reg = fn_dev->fd.data_base_addr;
-	u16 next_control_reg = fn_dev->fd.control_base_addr;
+	u16 next_query_reg = fn->fd.query_base_addr;
+	u16 next_data_reg = fn->fd.data_base_addr;
+	u16 next_control_reg = fn->fd.control_base_addr;
 
-	retval = rmi_read_block(fn_dev->rmi_dev, fn_dev->fd.query_base_addr,
+	retval = rmi_read_block(fn->rmi_dev, fn->fd.query_base_addr,
 				f17->query.regs, sizeof(f17->query.regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Failed to read query register.\n");
+		dev_err(&fn->dev, "Failed to read query register.\n");
 		return retval;
 	}
-	dev_info(&fn_dev->dev, "Found F17 with %d sticks.\n",
+	dev_info(&fn->dev, "Found F17 with %d sticks.\n",
 		 f17->query.number_of_sticks + 1);
 	next_query_reg += sizeof(f17->query.regs);
 
-	retval = rmi_read_block(rmi_dev, fn_dev->fd.command_base_addr,
+	retval = rmi_read_block(rmi_dev, fn->fd.command_base_addr,
 		f17->commands.regs, sizeof(f17->commands.regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Failed to read command register.\n");
+		dev_err(&fn->dev, "Failed to read command register.\n");
 		return retval;
 	}
 
-	f17->control_address = fn_dev->fd.control_base_addr;
+	f17->control_address = fn->fd.control_base_addr;
 	retval = f17_read_control_parameters(rmi_dev, f17);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Failed to initialize F17 control params.\n");
+		dev_err(&fn->dev, "Failed to initialize F17 control params.\n");
 		return retval;
 	}
 
@@ -378,7 +379,7 @@ static int f17_initialize(struct rmi_function_dev *fn_dev)
 					&next_query_reg, &next_data_reg,
 					&next_control_reg);
 		if (!retval) {
-			dev_err(&fn_dev->dev, "Failed to init stick %d.\n", i);
+			dev_err(&fn->dev, "Failed to init stick %d.\n", i);
 			return retval;
 		}
 	}
@@ -386,11 +387,11 @@ static int f17_initialize(struct rmi_function_dev *fn_dev)
 	return retval;
 }
 
-static int f17_register_stick(struct rmi_function_dev *fn_dev,
+static int f17_register_stick(struct rmi_function *fn,
 			      struct rmi_f17_stick_data *stick) {
 	int retval = 0;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_driver *driver = fn_dev->rmi_dev->driver;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_driver *driver = fn->rmi_dev->driver;
 
 	if (stick->query.general.has_absolute) {
 		struct input_dev *input_dev;
@@ -404,16 +405,16 @@ static int f17_register_stick(struct rmi_function_dev *fn_dev,
 		if (driver->set_input_params) {
 			retval = driver->set_input_params(rmi_dev, input_dev);
 			if (retval < 0) {
-				dev_err(&fn_dev->dev, "%s: Error in setting input device.\n",
+				dev_err(&fn->dev, "%s: Error in setting input device.\n",
 				__func__);
 				return retval;
 			}
 		}
 		sprintf(stick->input_phys, "%s.abs/input0",
-			dev_name(&fn_dev->dev));
+			dev_name(&fn->dev));
 		input_dev->phys = stick->input_phys;
 
-		input_dev->dev.parent = &fn_dev->dev;
+		input_dev->dev.parent = &fn->dev;
 		input_set_drvdata(input_dev, stick);
 
 		retval = input_register_device(input_dev);
@@ -438,15 +439,15 @@ static int f17_register_stick(struct rmi_function_dev *fn_dev,
 			retval = driver->set_input_params(rmi_dev,
 						input_dev_mouse);
 			if (retval < 0) {
-				dev_err(&fn_dev->dev, "%s: Error in setting relative input device.\n",
+				dev_err(&fn->dev, "%s: Error in setting relative input device.\n",
 				__func__);
 				return retval;
 			}
 		}
 		sprintf(stick->mouse_phys, "%s.rel/input0",
-			dev_name(&fn_dev->dev));
+			dev_name(&fn->dev));
 		input_dev_mouse->phys = stick->mouse_phys;
-		input_dev_mouse->dev.parent = &fn_dev->dev;
+		input_dev_mouse->dev.parent = &fn->dev;
 
 		set_bit(EV_REL, input_dev_mouse->evbit);
 		set_bit(REL_X, input_dev_mouse->relbit);
@@ -479,29 +480,29 @@ error_free_device:
 	return retval;
 }
 
-static int f17_register_devices(struct rmi_function_dev *fn_dev)
+static int f17_register_devices(struct rmi_function *fn)
 {
-	struct rmi_f17_device_data *f17 = fn_dev->data;
+	struct rmi_f17_device_data *f17 = fn->data;
 	int i;
 	int retval = 0;
 
 	for (i = 0; i < f17->query.number_of_sticks + 1 && !retval; i++)
-		retval = f17_register_stick(fn_dev, &f17->sticks[i]);
+		retval = f17_register_stick(fn, &f17->sticks[i]);
 
 	return retval;
 }
 
-static int f17_create_sysfs(struct rmi_function_dev *fn_dev)
+static int f17_create_sysfs(struct rmi_function *fn)
 {
 	int attr_count = 0;
 	int rc;
 
-	dev_dbg(&fn_dev->dev, "Creating sysfs files.\n");
+	dev_dbg(&fn->dev, "Creating sysfs files.\n");
 	/* Set up sysfs device attributes. */
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
 		if (sysfs_create_file
-		    (&fn_dev->dev.kobj, &attrs[attr_count].attr) < 0) {
-			dev_err(&fn_dev->dev,
+		    (&fn->dev.kobj, &attrs[attr_count].attr) < 0) {
+			dev_err(&fn->dev,
 				"Failed to create sysfs file for %s.",
 				attrs[attr_count].attr.name);
 			rc = -ENODEV;
@@ -513,20 +514,20 @@ static int f17_create_sysfs(struct rmi_function_dev *fn_dev)
 
 err_remove_sysfs:
 	for (attr_count--; attr_count >= 0; attr_count--)
-		sysfs_remove_file(&fn_dev->dev.kobj, &attrs[attr_count].attr);
+		sysfs_remove_file(&fn->dev.kobj, &attrs[attr_count].attr);
 	return rc;
 
 }
 
-static int f17_config(struct rmi_function_dev *fn_dev)
+static int f17_config(struct rmi_function *fn)
 {
-	struct rmi_f17_device_data *f17 = fn_dev->data;
+	struct rmi_f17_device_data *f17 = fn->data;
 	int retval;
 
-	retval = rmi_write_block(fn_dev->rmi_dev, f17->control_address,
+	retval = rmi_write_block(fn->rmi_dev, f17->control_address,
 		f17->controls.regs, sizeof(f17->controls.regs));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not write stick controls to 0x%04x\n",
+		dev_err(&fn->dev, "Could not write stick controls to 0x%04x\n",
 				f17->control_address);
 		return retval;
 	}
@@ -534,13 +535,13 @@ static int f17_config(struct rmi_function_dev *fn_dev)
 	return retval;
 }
 
-static int rmi_f17_remove(struct rmi_function_dev *fn_dev)
+static int rmi_f17_remove(struct rmi_function *fn)
 {
-	struct rmi_f17_device_data *f17 = fn_dev->data;
+	struct rmi_f17_device_data *f17 = fn->data;
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(attrs); i++)
-		sysfs_remove_file(&fn_dev->dev.kobj, &attrs[i].attr);
+		sysfs_remove_file(&fn->dev.kobj, &attrs[i].attr);
 
 	for (i = 0; i < f17->query.number_of_sticks + 1; i++)
 		input_unregister_device(f17->sticks[i].input);
@@ -597,32 +598,32 @@ error_exit:
 	return retval;
 }
 
-static int rmi_f17_probe(struct rmi_function_dev *fn_dev)
+static int rmi_f17_probe(struct rmi_function *fn)
 {
 	int retval;
 
-	retval = f17_alloc_memory(fn_dev);
+	retval = f17_alloc_memory(fn);
 	if (retval < 0)
 		return retval;
 
-	retval = f17_initialize(fn_dev);
+	retval = f17_initialize(fn);
 	if (retval < 0)
 		return retval;
 
-	retval = f17_register_devices(fn_dev);
+	retval = f17_register_devices(fn);
 	if (retval < 0)
 		return retval;
-	retval = f17_create_sysfs(fn_dev);
+	retval = f17_create_sysfs(fn);
 	if (retval < 0)
 		return retval;
 	return 0;
 }
 
-static int f17_attention(struct rmi_function_dev *fn_dev,
+static int f17_attention(struct rmi_function *fn,
 						unsigned long *irq_bits)
 {
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct rmi_f17_device_data *f17 = fn_dev->data;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct rmi_f17_device_data *f17 = fn->data;
 	int i;
 	int retval = 0;
 

@@ -28,10 +28,10 @@
 #define FUNCTION_NUMBER			0x19
 
 union f19_0d_query {
-		struct {
-			u8 configurable:1;
-			u8 has_sensitivity_adjust:1;
-			u8 has_hysteresis_threshold:1;
+	struct {
+		u8 configurable:1;
+		u8 has_sensitivity_adjust:1;
+		u8 has_hysteresis_threshold:1;
 		u8 reserved_1:5;
 
 		u8 button_count:5;
@@ -44,9 +44,9 @@ union f19_0d_query {
 };
 
 union f19_0d_control_0 {
-		struct {
-			u8 button_usage:2;
-			u8 filter_mode:2;
+	struct {
+		u8 button_usage:2;
+		u8 filter_mode:2;
 	} __attribute__((__packed__));
 	struct {
 		u8 regs[1];
@@ -178,19 +178,19 @@ static ssize_t rmi_f19_sensor_map_show(struct device *dev,
 					 struct device_attribute *attr,
 					 char *buf)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct f19_data *data;
 	int reg_length;
 	int result, size = 0;
 	char *temp;
 	int i;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 
 	/* Read current regtype values */
 	reg_length = data->control.reg_3->length;
-	result = rmi_read_block(fn_dev->rmi_dev, data->control.reg_3->address,
+	result = rmi_read_block(fn->rmi_dev, data->control.reg_3->address,
 			 data->control.reg_3->regs, reg_length * sizeof(u8));
 	if (result < 0) {
 		dev_dbg(dev, "%s : Could not read regtype at 0x%x\n"
@@ -204,10 +204,10 @@ static ssize_t rmi_f19_sensor_map_show(struct device *dev,
 		if (result < 0) {
 			dev_err(dev, "%s : Could not write output.", __func__);
 			return result;
-			}
+		}
 		size += result;
 		temp += result;
-		}
+	}
 	result = snprintf(temp, PAGE_SIZE - size, "\n");
 	if (result < 0) {
 		dev_err(dev, "%s : Could not write output.", __func__);
@@ -220,7 +220,7 @@ static ssize_t rmi_f19_sensor_map_store(struct device *dev,
 					 struct device_attribute *attr,
 					 const char *buf, size_t count)
 {
-	struct rmi_function_dev *fn_dev;
+	struct rmi_function *fn;
 	struct f19_data *data;
 	int reg_length;
 	int result;
@@ -228,12 +228,12 @@ static ssize_t rmi_f19_sensor_map_store(struct device *dev,
 	int i;
 	unsigned int newval;
 
-	fn_dev = to_rmi_function_dev(dev);
-	data = fn_dev->data;
+	fn = to_rmi_function(dev);
+	data = fn->data;
 
 	/* Read current regtype values */
 	reg_length = data->control.reg_3->length;
-	result = rmi_read_block(fn_dev->rmi_dev, data->control.reg_3->address,
+	result = rmi_read_block(fn->rmi_dev, data->control.reg_3->address,
 			 data->control.reg_3->regs, reg_length * sizeof(u8));
 
 	if (result < 0) {
@@ -250,7 +250,7 @@ static ssize_t rmi_f19_sensor_map_store(struct device *dev,
 		} else {
 			/* If we don't read a value for each position, abort,
 			 * restore previous values locally by rereading */
-			result = rmi_read_block(fn_dev->rmi_dev,
+			result = rmi_read_block(fn->rmi_dev,
 					data->control.reg_3->address,
 					data->control.reg_3->regs,
 					reg_length * sizeof(u8));
@@ -267,9 +267,9 @@ static ssize_t rmi_f19_sensor_map_store(struct device *dev,
 			temp++;
 			if (isspace(*(temp - 1)) && !isspace(*temp))
 				break;
-	}
 		}
-	result = rmi_write_block(fn_dev->rmi_dev, data->control.reg_3->address,
+	}
+	result = rmi_write_block(fn->rmi_dev, data->control.reg_3->address,
 			 data->control.reg_3->regs,
 			reg_length * sizeof(u8));
 	if (result < 0) {
@@ -295,22 +295,22 @@ static ssize_t f19_rezero_store(struct device *dev,
 	unsigned int new_value;
 	int len;
 	struct f19_data *f19;
-	struct rmi_function_dev *fn_dev = to_rmi_function_dev(dev);
+	struct rmi_function *fn = to_rmi_function(dev);
 
-	f19 = fn_dev->data;
+	f19 = fn->data;
 	len = sscanf(buf, "%u", &new_value);
 	if (new_value != 0 && new_value != 1) {
 		dev_err(dev, "%s: Error - rezero is not a valid value 0x%x.\n",
 			__func__, new_value);
 		return -EINVAL;
-		}
+	}
 	f19->button_rezero = new_value & 1;
-	len = rmi_write(fn_dev->rmi_dev, fn_dev->fd.command_base_addr,
+	len = rmi_write(fn->rmi_dev, fn->fd.command_base_addr,
 		f19->button_rezero);
 
 	if (len < 0) {
 		dev_err(dev, "%s : Could not write rezero to 0x%x\n",
-				__func__, fn_dev->fd.command_base_addr);
+				__func__, fn->fd.command_base_addr);
 		return -EINVAL;
 	}
 	return count;
@@ -397,66 +397,66 @@ int rmi_f19_read_control_parameters(struct rmi_device *rmi_dev,
 	return 0;
 }
 
-static int rmi_f19_alloc_memory(struct rmi_function_dev *fn_dev)
+static int rmi_f19_alloc_memory(struct rmi_function *fn)
 {
 	struct f19_data *f19;
 	int rc;
 	u16 ctrl_base_addr;
 
 	/* allow memory for fn19 data */
-	f19 = devm_kzalloc(&fn_dev->dev, sizeof(struct f19_data), GFP_KERNEL);
+	f19 = devm_kzalloc(&fn->dev, sizeof(struct f19_data), GFP_KERNEL);
 	if (!f19) {
-		dev_err(&fn_dev->dev, "Failed to allocate function data.\n");
+		dev_err(&fn->dev, "Failed to allocate function data.\n");
 		return -ENOMEM;
 	}
-	fn_dev->data = f19;
-	rc = rmi_read_block(fn_dev->rmi_dev, fn_dev->fd.query_base_addr,
+	fn->data = f19;
+	rc = rmi_read_block(fn->rmi_dev, fn->fd.query_base_addr,
 				&f19->query,
 				sizeof(f19->query.regs));
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "Failed to read query register.\n");
+		dev_err(&fn->dev, "Failed to read query register.\n");
 		return rc;
 	}
-	f19->query.address = fn_dev->fd.query_base_addr;
+	f19->query.address = fn->fd.query_base_addr;
 
 	f19->button_bitmask_size = sizeof(u8)*(f19->query.button_count + 7)/8;
-	f19->button_data_buffer = devm_kzalloc(&fn_dev->dev,
+	f19->button_data_buffer = devm_kzalloc(&fn->dev,
 				f19->button_bitmask_size, GFP_KERNEL);
 	if (!f19->button_data_buffer) {
-		dev_err(&fn_dev->dev, "Failed to allocate button data buffer.\n");
+		dev_err(&fn->dev, "Failed to allocate button data buffer.\n");
 		return -ENOMEM;
 	}
 
-	f19->button_map = devm_kzalloc(&fn_dev->dev, f19->query.button_count,
+	f19->button_map = devm_kzalloc(&fn->dev, f19->query.button_count,
 				GFP_KERNEL);
 	if (!f19->button_map) {
-		dev_err(&fn_dev->dev, "Failed to allocate button map.\n");
+		dev_err(&fn->dev, "Failed to allocate button map.\n");
 		return -ENOMEM;
 	}
 
 	/* allocate memory for control reg */
 	/* reg 0 */
-	ctrl_base_addr = fn_dev->fd.control_base_addr;
-	f19->control.reg_0 = devm_kzalloc(&fn_dev->dev,
+	ctrl_base_addr = fn->fd.control_base_addr;
+	f19->control.reg_0 = devm_kzalloc(&fn->dev,
 				sizeof(f19->control.reg_0->regs), GFP_KERNEL);
 	if (!f19->control.reg_0) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_0 control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_0 control registers.");
 		return -ENOMEM;
 	}
 	f19->control.reg_0->address = ctrl_base_addr;
 	ctrl_base_addr += sizeof(f19->control.reg_0->regs);
 
 	/* reg 1 */
-	f19->control.reg_1 = devm_kzalloc(&fn_dev->dev,
+	f19->control.reg_1 = devm_kzalloc(&fn->dev,
 				sizeof(struct f19_0d_control_1), GFP_KERNEL);
 	if (!f19->control.reg_1) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_1 control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_1 control registers.");
 		return -ENOMEM;
 	}
-	f19->control.reg_1->regs = devm_kzalloc(&fn_dev->dev,
+	f19->control.reg_1->regs = devm_kzalloc(&fn->dev,
 					f19->button_bitmask_size, GFP_KERNEL);
 	if (!f19->control.reg_1->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_1->regs control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_1->regs control registers.");
 		return -ENOMEM;
 	}
 	f19->control.reg_1->address = ctrl_base_addr;
@@ -464,16 +464,16 @@ static int rmi_f19_alloc_memory(struct rmi_function_dev *fn_dev)
 	ctrl_base_addr += f19->button_bitmask_size;
 
 	/* reg 2 */
-	f19->control.reg_2 = devm_kzalloc(&fn_dev->dev,
+	f19->control.reg_2 = devm_kzalloc(&fn->dev,
 			sizeof(struct f19_0d_control_2), GFP_KERNEL);
 	if (!f19->control.reg_2) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_2 control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_2 control registers.");
 		return -ENOMEM;
 	}
-	f19->control.reg_2->regs = devm_kzalloc(&fn_dev->dev,
+	f19->control.reg_2->regs = devm_kzalloc(&fn->dev,
 					f19->button_bitmask_size, GFP_KERNEL);
 	if (!f19->control.reg_2->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_2->regs control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_2->regs control registers.");
 		return -ENOMEM;
 	}
 	f19->control.reg_2->address = ctrl_base_addr;
@@ -481,16 +481,16 @@ static int rmi_f19_alloc_memory(struct rmi_function_dev *fn_dev)
 	ctrl_base_addr += f19->button_bitmask_size;
 
 	/* reg 3 */
-	f19->control.reg_3 = devm_kzalloc(&fn_dev->dev,
+	f19->control.reg_3 = devm_kzalloc(&fn->dev,
 			sizeof(struct f19_0d_control_3), GFP_KERNEL);
 	if (!f19->control.reg_3) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_3 control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_3 control registers.");
 		return -ENOMEM;
 	}
-	f19->control.reg_3->regs = devm_kzalloc(&fn_dev->dev,
+	f19->control.reg_3->regs = devm_kzalloc(&fn->dev,
 				f19->query.button_count, GFP_KERNEL);
 	if (!f19->control.reg_3->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_3->regs control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_3->regs control registers.");
 		return -ENOMEM;
 	}
 	f19->control.reg_3->address = ctrl_base_addr;
@@ -498,16 +498,16 @@ static int rmi_f19_alloc_memory(struct rmi_function_dev *fn_dev)
 	ctrl_base_addr += f19->query.button_count;
 
 	/* reg 4 */
-	f19->control.reg_4 = devm_kzalloc(&fn_dev->dev,
+	f19->control.reg_4 = devm_kzalloc(&fn->dev,
 				sizeof(struct f19_0d_control_4), GFP_KERNEL);
 	if (!f19->control.reg_4) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_3 control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_3 control registers.");
 		return -ENOMEM;
 	}
-	f19->control.reg_4->regs = devm_kzalloc(&fn_dev->dev,
+	f19->control.reg_4->regs = devm_kzalloc(&fn->dev,
 				f19->query.button_count, GFP_KERNEL);
 	if (!f19->control.reg_4->regs) {
-		dev_err(&fn_dev->dev, "Failed to allocate reg_3->regs control registers.");
+		dev_err(&fn->dev, "Failed to allocate reg_3->regs control registers.");
 		return -ENOMEM;
 	}
 	f19->control.reg_4->address = ctrl_base_addr;
@@ -516,10 +516,10 @@ static int rmi_f19_alloc_memory(struct rmi_function_dev *fn_dev)
 
 	/* reg 5 */
 	if (f19->query.has_sensitivity_adjust) {
-		f19->control.reg_5 = devm_kzalloc(&fn_dev->dev,
+		f19->control.reg_5 = devm_kzalloc(&fn->dev,
 			sizeof(f19->control.reg_5->regs), GFP_KERNEL);
 		if (!f19->control.reg_5) {
-			dev_err(&fn_dev->dev, "Failed to allocate reg_5 control registers.");
+			dev_err(&fn->dev, "Failed to allocate reg_5 control registers.");
 			return -ENOMEM;
 		}
 		f19->control.reg_5->address = ctrl_base_addr;
@@ -528,10 +528,10 @@ static int rmi_f19_alloc_memory(struct rmi_function_dev *fn_dev)
 	/* reg 6 */
 	if (f19->query.has_hysteresis_threshold) {
 		f19->control.reg_6 =
-			devm_kzalloc(&fn_dev->dev,
+			devm_kzalloc(&fn->dev,
 				sizeof(f19->control.reg_6->regs), GFP_KERNEL);
 		if (!f19->control.reg_6) {
-			dev_err(&fn_dev->dev, "Failed to allocate reg_6 control registers.");
+			dev_err(&fn->dev, "Failed to allocate reg_6 control registers.");
 			return -ENOMEM;
 		}
 		f19->control.reg_6->address = ctrl_base_addr;
@@ -539,41 +539,41 @@ static int rmi_f19_alloc_memory(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static void rmi_f19_free_memory(struct rmi_function_dev *fn_dev)
+static void rmi_f19_free_memory(struct rmi_function *fn)
 {
 	union f19_0d_query *query;
-	struct f19_data *f19 = fn_dev->data;
+	struct f19_data *f19 = fn->data;
 
 	query = &f19->query;
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_query);
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_control);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_query);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_control);
 	if (query->has_sensitivity_adjust)
-		sysfs_remove_file(&fn_dev->dev.kobj, attrify(sensitivity_adj));
+		sysfs_remove_file(&fn->dev.kobj, attrify(sensitivity_adj));
 
 	if (query->has_hysteresis_threshold)
-		sysfs_remove_file(&fn_dev->dev.kobj,
+		sysfs_remove_file(&fn->dev.kobj,
 				attrify(hysteresis_threshold));
-	sysfs_remove_group(&fn_dev->dev.kobj, &attrs_command);
+	sysfs_remove_group(&fn->dev.kobj, &attrs_command);
 	if (query->configurable)
-		sysfs_remove_file(&fn_dev->dev.kobj, &sensor_map_attr.attr);
+		sysfs_remove_file(&fn->dev.kobj, &sensor_map_attr.attr);
 	else
-		sysfs_remove_file(&fn_dev->dev.kobj, &sensor_map_ro_attr.attr);
+		sysfs_remove_file(&fn->dev.kobj, &sensor_map_ro_attr.attr);
 
 }
 
-static int rmi_f19_initialize(struct rmi_function_dev *fn_dev)
+static int rmi_f19_initialize(struct rmi_function *fn)
 {
 	int i;
 	int rc;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
 	struct rmi_device_platform_data *pdata;
-	struct f19_data *f19 = fn_dev->data;
+	struct f19_data *f19 = fn->data;
 
 	/* initial all default values for f19 data here */
-	rc = rmi_read(rmi_dev, fn_dev->fd.command_base_addr,
+	rc = rmi_read(rmi_dev, fn->fd.command_base_addr,
 		&f19->button_rezero);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "Failed to read command register.\n");
+		dev_err(&fn->dev, "Failed to read command register.\n");
 		return rc;
 	}
 	f19->button_rezero = f19->button_rezero & 1;
@@ -581,14 +581,14 @@ static int rmi_f19_initialize(struct rmi_function_dev *fn_dev)
 	pdata = to_rmi_platform_data(rmi_dev);
 	if (pdata) {
 		if (!pdata->f19_button_map)
-			dev_warn(&fn_dev->dev, "F19 button_map is NULL");
+			dev_warn(&fn->dev, "F19 button_map is NULL");
 		else if (!pdata->f19_button_map->map)
-			dev_warn(&fn_dev->dev,
+			dev_warn(&fn->dev,
 				 "Platformdata button map is missing!\n");
 		else {
 			if (pdata->f19_button_map->nbuttons !=
 						f19->query.button_count)
-				dev_warn(&fn_dev->dev, "Platformdata button map size (%d) != number of buttons on device (%d) - ignored.\n",
+				dev_warn(&fn->dev, "Platformdata button map size (%d) != number of buttons on device (%d) - ignored.\n",
 					pdata->f19_button_map->nbuttons,
 					f19->query.button_count);
 			f19->button_count = min(pdata->f19_button_map->nbuttons,
@@ -600,7 +600,7 @@ static int rmi_f19_initialize(struct rmi_function_dev *fn_dev)
 	}
 	rc = rmi_f19_read_control_parameters(rmi_dev, f19);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev,
+		dev_err(&fn->dev,
 			"Failed to initialize F19 control params.\n");
 		return rc;
 	}
@@ -610,17 +610,17 @@ static int rmi_f19_initialize(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static int rmi_f19_register_device(struct rmi_function_dev *fn_dev)
+static int rmi_f19_register_device(struct rmi_function *fn)
 {
 	int i;
 	int rc;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct f19_data *f19 = fn_dev->data;
-	struct rmi_driver *driver = fn_dev->rmi_dev->driver;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct f19_data *f19 = fn->data;
+	struct rmi_driver *driver = fn->rmi_dev->driver;
 	struct input_dev *input_dev = input_allocate_device();
 
 	if (!input_dev) {
-		dev_err(&fn_dev->dev, "Failed to allocate input device.\n");
+		dev_err(&fn->dev, "Failed to allocate input device.\n");
 		return -ENOMEM;
 	}
 
@@ -629,12 +629,12 @@ static int rmi_f19_register_device(struct rmi_function_dev *fn_dev)
 	if (driver->set_input_params) {
 		rc = driver->set_input_params(rmi_dev, input_dev);
 		if (rc < 0) {
-			dev_err(&fn_dev->dev, "%s: Error in setting input device.\n",
+			dev_err(&fn->dev, "%s: Error in setting input device.\n",
 			__func__);
 			goto error_free_device;
 		}
 	}
-	sprintf(f19->input_phys, "%s/input0", dev_name(&fn_dev->dev));
+	sprintf(f19->input_phys, "%s/input0", dev_name(&fn->dev));
 	input_dev->phys = f19->input_phys;
 	input_dev->dev.parent = &rmi_dev->dev;
 	input_set_drvdata(input_dev, f19);
@@ -653,7 +653,7 @@ static int rmi_f19_register_device(struct rmi_function_dev *fn_dev)
 		set_bit(f19->button_map[i], input_dev->keybit);
 	rc = input_register_device(input_dev);
 	if (rc < 0) {
-		dev_err(&fn_dev->dev, "Failed to register input device.\n");
+		dev_err(&fn->dev, "Failed to register input device.\n");
 		goto error_free_device;
 	}
 
@@ -665,53 +665,53 @@ error_free_device:
 	return rc;
 }
 
-static int rmi_f19_create_sysfs(struct rmi_function_dev *fn_dev)
+static int rmi_f19_create_sysfs(struct rmi_function *fn)
 {
-	struct f19_data *f19 = fn_dev->data;
+	struct f19_data *f19 = fn->data;
 	union f19_0d_query *query = &f19->query;
 
-	dev_dbg(&fn_dev->dev, "Creating sysfs files.\n");
+	dev_dbg(&fn->dev, "Creating sysfs files.\n");
 
 	/* Set up sysfs device attributes. */
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_query) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create query sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_query) < 0) {
+		dev_err(&fn->dev, "Failed to create query sysfs files.");
 		return -ENODEV;
 	}
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_control) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create control sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_control) < 0) {
+		dev_err(&fn->dev, "Failed to create control sysfs files.");
 		return -ENODEV;
 	}
 	if (query->has_sensitivity_adjust) {
-		if (sysfs_create_file(&fn_dev->dev.kobj,
+		if (sysfs_create_file(&fn->dev.kobj,
 				attrify(sensitivity_adj)) < 0) {
-			dev_err(&fn_dev->dev,
+			dev_err(&fn->dev,
 				"Failed to create control sysfs files.");
 			return -ENODEV;
 		}
 	}
 	if (query->has_hysteresis_threshold) {
-		if (sysfs_create_file(&fn_dev->dev.kobj,
+		if (sysfs_create_file(&fn->dev.kobj,
 				attrify(hysteresis_threshold)) < 0) {
-			dev_err(&fn_dev->dev,
+			dev_err(&fn->dev,
 				"Failed to create control sysfs files.");
 			return -ENODEV;
 		}
 	}
-	if (sysfs_create_group(&fn_dev->dev.kobj, &attrs_command) < 0) {
-		dev_err(&fn_dev->dev, "Failed to create command sysfs files.");
+	if (sysfs_create_group(&fn->dev.kobj, &attrs_command) < 0) {
+		dev_err(&fn->dev, "Failed to create command sysfs files.");
 		return -ENODEV;
 	}
 	if (query->configurable) {
-		if (sysfs_create_file(&fn_dev->dev.kobj,
+		if (sysfs_create_file(&fn->dev.kobj,
 					&sensor_map_attr.attr) < 0) {
-			dev_err(&fn_dev->dev,
+			dev_err(&fn->dev,
 				"Failed to create control sysfs files.");
 			return -ENODEV;
-	}
+		}
 	} else {
-		if (sysfs_create_file(&fn_dev->dev.kobj,
+		if (sysfs_create_file(&fn->dev.kobj,
 					&sensor_map_ro_attr.attr) < 0) {
-			dev_err(&fn_dev->dev,
+			dev_err(&fn->dev,
 				"Failed to create control sysfs files.");
 			return -ENODEV;
 		}
@@ -719,136 +719,136 @@ static int rmi_f19_create_sysfs(struct rmi_function_dev *fn_dev)
 	return 0;
 }
 
-static int rmi_f19_config(struct rmi_function_dev *fn_dev)
+static int rmi_f19_config(struct rmi_function *fn)
 {
-	struct f19_data *f19 = fn_dev->data;
+	struct f19_data *f19 = fn->data;
 	int retval = 0;
 	union f19_0d_query *query = &f19->query;
 	struct f19_0d_control *control = &f19->control;
 
-	retval = rmi_write_block(fn_dev->rmi_dev, control->reg_0->address,
+	retval = rmi_write_block(fn->rmi_dev, control->reg_0->address,
 			control->reg_0->regs,
 			sizeof(u8));
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not write control reg0 to %#06x.\n",
+		dev_err(&fn->dev, "Could not write control reg0 to %#06x.\n",
 				control->reg_0->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, control->reg_1->address,
+	retval = rmi_write_block(fn->rmi_dev, control->reg_1->address,
 			control->reg_1->regs, f19->button_bitmask_size);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not write control reg1 to %#06x.\n",
+		dev_err(&fn->dev, "Could not write control reg1 to %#06x.\n",
 			 control->reg_1->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, control->reg_2->address,
+	retval = rmi_write_block(fn->rmi_dev, control->reg_2->address,
 			control->reg_2->regs, f19->button_bitmask_size);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not write control reg2 to %#06x.\n",
+		dev_err(&fn->dev, "Could not write control reg2 to %#06x.\n",
 			 control->reg_2->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, control->reg_3->address,
+	retval = rmi_write_block(fn->rmi_dev, control->reg_3->address,
 			control->reg_3->regs, query->button_count);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not write control reg3 to %#06x.\n",
+		dev_err(&fn->dev, "Could not write control reg3 to %#06x.\n",
 			 control->reg_3->address);
 		return retval;
 	}
 
-	retval = rmi_write_block(fn_dev->rmi_dev, control->reg_4->address,
+	retval = rmi_write_block(fn->rmi_dev, control->reg_4->address,
 			control->reg_4->regs, query->button_count);
 	if (retval < 0) {
-		dev_err(&fn_dev->dev, "Could not write control reg3 to %#06x.\n",
+		dev_err(&fn->dev, "Could not write control reg3 to %#06x.\n",
 			 control->reg_4->address);
 		return retval;
-		}
+	}
 
 	if (query->has_sensitivity_adjust) {
-		retval = rmi_write_block(fn_dev->rmi_dev,
+		retval = rmi_write_block(fn->rmi_dev,
 				control->reg_5->address, control->reg_5->regs,
 				sizeof(control->reg_5->regs));
 		if (retval < 0) {
-			dev_err(&fn_dev->dev,
+			dev_err(&fn->dev,
 				"Could not write control reg5 to %#06x.\n",
 				control->reg_5->address);
 			return retval;
 		}
 	}
 	if (query->has_hysteresis_threshold) {
-		retval = rmi_write_block(fn_dev->rmi_dev,
+		retval = rmi_write_block(fn->rmi_dev,
 					control->reg_6->address,
 					control->reg_6->regs,
 					sizeof(control->reg_6->regs));
-	if (retval < 0) {
-			dev_err(&fn_dev->dev,
+		if (retval < 0) {
+			dev_err(&fn->dev,
 				"Could not write control reg6 to %#06x.\n",
 				control->reg_6->address);
 			return retval;
-	}
+		}
 	}
 	return 0;
 }
 
-static int rmi_f19_probe(struct rmi_function_dev *fn_dev)
+static int rmi_f19_probe(struct rmi_function *fn)
 {
-	int rc = rmi_f19_alloc_memory(fn_dev);
+	int rc = rmi_f19_alloc_memory(fn);
 	if (rc < 0)
 		goto err_free_data;
 
-	rc = rmi_f19_initialize(fn_dev);
+	rc = rmi_f19_initialize(fn);
 	if (rc < 0)
 		goto err_free_data;
 
-	rc = rmi_f19_register_device(fn_dev);
+	rc = rmi_f19_register_device(fn);
 	if (rc < 0)
 		goto err_free_data;
 
-	rc = rmi_f19_create_sysfs(fn_dev);
+	rc = rmi_f19_create_sysfs(fn);
 	if (rc < 0)
 		goto err_free_data;
 
 	return 0;
 
 err_free_data:
-	rmi_f19_free_memory(fn_dev);
+	rmi_f19_free_memory(fn);
 	return rc;
 }
 
-static int rmi_f19_reset(struct rmi_function_dev *fn_dev)
+static int rmi_f19_reset(struct rmi_function *fn)
 {
 	/* we do nnothing here */
 	return 0;
 }
 
 
-static int rmi_f19_remove(struct rmi_function_dev *fn_dev)
+static int rmi_f19_remove(struct rmi_function *fn)
 {
-	struct f19_data *f19 = fn_dev->data;
+	struct f19_data *f19 = fn->data;
 
 	input_unregister_device(f19->input);
-	rmi_f19_free_memory(fn_dev);
+	rmi_f19_free_memory(fn);
 
 	return 0;
 }
 
-static int rmi_f19_attention(struct rmi_function_dev *fn_dev,
+static int rmi_f19_attention(struct rmi_function *fn,
 						unsigned long *irq_bits)
 {
 	int error;
 	int button;
-	struct rmi_device *rmi_dev = fn_dev->rmi_dev;
-	struct f19_data *f19 = fn_dev->data;
-	u16 data_base_addr = fn_dev->fd.data_base_addr;
+	struct rmi_device *rmi_dev = fn->rmi_dev;
+	struct f19_data *f19 = fn->data;
+	u16 data_base_addr = fn->fd.data_base_addr;
 
 	/* Read the button data. */
 	error = rmi_read_block(rmi_dev, data_base_addr, f19->button_data_buffer,
 			f19->button_bitmask_size);
 	if (error < 0) {
-		dev_err(&fn_dev->dev, "%s: Failed to read button data registers.\n",
+		dev_err(&fn->dev, "%s: Failed to read button data registers.\n",
 			__func__);
 		return error;
 	}
