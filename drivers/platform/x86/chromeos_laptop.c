@@ -25,6 +25,7 @@
 #include <linux/i2c.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/i2c/i2c-hid.h>
 
 #define ATMEL_TP_I2C_ADDR	0x4b
 #define ATMEL_TP_I2C_BL_ADDR	0x25
@@ -33,6 +34,7 @@
 #define CYAPA_TP_I2C_ADDR	0x67
 #define ISL_ALS_I2C_ADDR	0x44
 #define TAOS_ALS_I2C_ADDR	0x29
+#define SYNA_TP_I2C_ADDR	0x20
 
 static struct i2c_client *als;
 static struct i2c_client *tp;
@@ -86,11 +88,22 @@ static struct i2c_board_info tsl2563_als_device = {
 	I2C_BOARD_INFO("tsl2563", TAOS_ALS_I2C_ADDR),
 };
 
+static struct i2c_hid_platform_data tm2814_platformdata = {
+	.hid_descriptor_address = 0x20,
+};
+
+static struct i2c_board_info __initdata synaptics_i2c_device ={
+	I2C_BOARD_INFO("hid", SYNA_TP_I2C_ADDR),
+	.platform_data = &tm2814_platformdata,
+};
+
+#if 0
 static struct i2c_board_info atmel_224s_tp_device = {
 	I2C_BOARD_INFO("atmel_mxt_tp", ATMEL_TP_I2C_ADDR),
 	.platform_data = NULL,
 	.flags		= I2C_CLIENT_WAKE,
 };
+#endif
 
 static struct i2c_board_info atmel_1664s_device = {
 	I2C_BOARD_INFO("atmel_mxt_ts", ATMEL_TS_I2C_ADDR),
@@ -225,6 +238,7 @@ static int setup_cyapa_tp(enum i2c_adapter_type type)
 	return (!tp) ? -EAGAIN : 0;
 }
 
+#if 0
 static int setup_atmel_224s_tp(enum i2c_adapter_type type)
 {
 	const unsigned short addr_list[] = { ATMEL_TP_I2C_BL_ADDR,
@@ -236,6 +250,23 @@ static int setup_atmel_224s_tp(enum i2c_adapter_type type)
 	/* add atmel mxt touchpad */
 	tp = add_probed_i2c_device("trackpad", type,
 				   &atmel_224s_tp_device, addr_list);
+	return (!tp) ? -EAGAIN : 0;
+}
+#endif
+
+static int setup_syna_2814_tp(enum i2c_adapter_type type)
+{
+	const unsigned short syna_addr_list[] = { SYNA_TP_I2C_ADDR,
+						   I2C_CLIENT_END };
+
+	if (tp)
+		return 0;
+
+	/* add syna touchpad */
+	tp = add_probed_i2c_device("trackpad",
+						   I2C_ADAPTER_VGADDC,
+						   &synaptics_i2c_device,
+						   syna_addr_list);
 	return (!tp) ? -EAGAIN : 0;
 }
 
@@ -355,7 +386,7 @@ static struct chromeos_laptop chromebook_pixel = {
 		/* Touch Screen. */
 		{ .add = setup_atmel_1664s_ts, I2C_ADAPTER_PANEL },
 		/* Touchpad. */
-		{ .add = setup_atmel_224s_tp, I2C_ADAPTER_VGADDC },
+		{ .add = setup_syna_2814_tp, I2C_ADAPTER_VGADDC },
 		/* Light Sensor. */
 		{ .add = setup_isl29018_als, I2C_ADAPTER_PANEL },
 	},
@@ -422,7 +453,7 @@ static struct chromeos_laptop bolt = {
 		/* Touchscreen. */
 		{ .add = setup_atmel_1664s_ts, I2C_ADAPTER_I2C1 },
 		/* Touchpad. */
-		{. add = setup_atmel_224s_tp, I2C_ADAPTER_I2C0 },
+		{. add = setup_syna_2814_tp, I2C_ADAPTER_I2C0 },
 		/* Light Sensor. */
 		{. add = setup_isl29018_als, I2C_ADAPTER_I2C1 },
 	},
