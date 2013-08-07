@@ -861,7 +861,7 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 		f11->dev_controls.ctrl0_9->sensor_max_y_pos;
 	int x_min, x_max, y_min, y_max;
 	unsigned int input_flags;
-	//int res_x, res_y;
+	int res_x, res_y;
 
 	/* We assume touchscreen unless demonstrably a touchpad or specified
 	 * as a touchpad in the platform data
@@ -903,11 +903,11 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 	input_set_abs_params(input, ABS_Y, y_min, y_max, 0, 0);
 	input_set_abs_params(input, ABS_PRESSURE, 0, DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
 
-	//res_x = (x_max - x_min) / 102;
-	//res_y = (y_max - y_min) / 68;
+	res_x = (x_max - x_min) / 102;
+	res_y = (y_max - y_min) / 68;
 
-	//input_abs_set_res(input, ABS_X, res_x);
-	//input_abs_set_res(input, ABS_Y, res_y);
+	input_abs_set_res(input, ABS_X, res_x);
+	input_abs_set_res(input, ABS_Y, res_y);
 
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0,
 			DEFAULT_MAX_ABS_MT_PRESSURE, 0, 0);
@@ -925,8 +925,8 @@ static void f11_set_abs_params(struct rmi_function *fn, int index)
 			x_min, x_max, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y,
 			y_min, y_max, 0, 0);
-	//input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
-	//input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
+	input_abs_set_res(input, ABS_MT_POSITION_X, res_x);
+	input_abs_set_res(input, ABS_MT_POSITION_Y, res_y);
 	if (!sensor->type_a)
 		input_mt_init_slots(input, sensor->nbr_fingers, 0);
 	if (IS_ENABLED(CONFIG_RMI4_F11_PEN) &&
