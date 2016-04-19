@@ -109,7 +109,7 @@ static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 				   char **buf,
 				   struct pstore_info *psi)
 {
-	ssize_t size;
+	ssize_t size = 0;
 	char *rambuf = NULL;
 	struct ramoops_context *cxt = &oops_cxt;
 
